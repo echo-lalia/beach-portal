@@ -55,6 +55,8 @@ class LightSensor:
         
         return abs((maximum - minimum) / _SENSOR_RANGE)
 
+
+
 if __name__ == "__main__":
     import time
     

@@ -18,6 +18,7 @@ _CONNECT_TIMEOUT_SECONDS = const(20)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ GLOBALS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
+
 NIC = network.WLAN(network.STA_IF)
 
 with open('config.json', 'r') as config_file:
