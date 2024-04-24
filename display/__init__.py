@@ -91,7 +91,7 @@ def rgb_to_hsv(r, g, b):
     h = (h/6.0) % 1.0
     return h, s, v
 
-
+@micropython.native
 def hsv_to_rgb(h, s, v):
     '''
     Convert an RGB float to an HSV float.
@@ -119,7 +119,7 @@ def hsv_to_rgb(h, s, v):
         return v, p, q
     # Cannot get here
 
-
+@micropython.native
 def mix_hsv(hsv1, hsv2, factor=0.5):
     """mix two HSV tuples to the weight of factor."""
     h1,s1,v1 = hsv1
@@ -131,7 +131,7 @@ def mix_hsv(hsv1, hsv2, factor=0.5):
     
     return hue, sat, val
     
-
+@micropython.native
 def HSV(h,s=0,v=0):
     """Convert HSV vals into 565 value used by display."""
     if type(h) == tuple:
@@ -145,6 +145,7 @@ def HSV(h,s=0,v=0):
     
     return swap_bytes(combine_color565(red, green, blue))
 
+@micropython.native
 def dithered_HSV(h,s=0,v=0):
     """
     Convert HSV into RGB565 as a [3][3] tuple,
@@ -231,9 +232,9 @@ class Display:
         fbuf = self.fbuf
         
         # generate 'random' offsets for each component, to reduce color 
-        r_offset = 1 if rm == 0 else (x + y + r1) % rm
-        g_offset = 1 if gm == 0 else (x - y + g2) % gm
-        b_offset = 1 if bm == 0 else (x + y - b1) % bm
+        r_offset = 1 if rm == 0 else (x + y + r1 * r2) % rm
+        g_offset = 1 if gm == 0 else (x - y + g2 * b2) % gm
+        b_offset = 1 if bm == 0 else (x + y - b1 * g1) % bm
         
         for i in range(width):
             
@@ -257,7 +258,7 @@ class Display:
                 b_offset = (b_offset + 1) % bm
             
             
-            
+    @micropython.native
     def dithered_hline(self, x, y, width, color):
         """Create an hline, but use dithering to represent exact colors."""
         fbuf = self.fbuf
@@ -296,7 +297,8 @@ class Display:
         
     def show(self):
         self.tft.bitmap(0,0, self.width, self.height, self.fbuf)
-        
+    
+    @micropython.native
     def v_gradient(self, x, y, width, height, start_color, end_color, easing=None):
         fbuf = self.fbuf
         

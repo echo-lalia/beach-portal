@@ -1,7 +1,8 @@
 import time
 import network
 import json
-
+import requests
+import ntptime
 
 """
 This module is used for fetching and parsing data from the internet,
@@ -26,6 +27,7 @@ with open('config.json', 'r') as config_file:
         config_file.read()
         )
 
+TIMEZONE = None
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ WIFI FUNCTIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -64,11 +66,44 @@ def stop_internet_connection():
     NIC.active(False)
     
     
+# fetch internet data
+def get_timezone_data():
+    global TIMEZONE
     
+    if TIMEZONE is None:
+        coords = CONFIG["location_coords"]
+        url = f"https://www.timeapi.io/api/TimeZone/coordinate?latitude={coords[0]}&longitude={coords[1]}"
+        
+        response = requests.get(url)
+        
+        if response.status_code != 200:
+            print(f"get_time_data failed with this response: {response.status_code}")
+            return False
     
+    TIMEZONE = json.loads(response.content)
+    print(response.content)
+    return True
     
+def set_time():
+    try:
+        ntptime.settime()
+    except Exception as e:
+        print(f"Couldn't sync NTP time: {e}")
+    try:
+        get_timezone_data()
+    except Exception as e:
+        print(f"Couldn't get timezone data: {e}")
     
+def get_local_time():
+    epoch = time.time()
+    local_epoch = epoch + TIMEZONE["currentUtcOffset"]["seconds"]
+    return time.localtime(local_epoch)
+
 if __name__ == "__main__":
     print(CONFIG)
-    print(connect_to_internet())
+    connect_to_internet()
+    
+    set_time()
+    print(get_local_time())
+    
     stop_internet_connection()
