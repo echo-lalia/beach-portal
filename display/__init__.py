@@ -297,12 +297,15 @@ class Display:
     def show(self):
         self.tft.bitmap(0,0, self.width, self.height, self.fbuf)
         
-    def v_gradient(self, x, y, width, height, start_color, end_color):
+    def v_gradient(self, x, y, width, height, start_color, end_color, easing=None):
         fbuf = self.fbuf
         
         for i in range(height):
             
             fac = i / (height - 1)
+            if easing:
+                fac = easing(fac)
+            
             
             color = mix_hsv(start_color, end_color, factor=fac)
             

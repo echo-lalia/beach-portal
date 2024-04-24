@@ -14,6 +14,13 @@ _BLIGHT_MAX = const(65535)
 _WIDTH = const(272)
 _HEIGHT = const(480)
 
+# sky size
+_SKY_HEIGHT = const((_HEIGHT * 2) // 3)
+_SKY_START_HEIGHT = const((_SKY_HEIGHT * 2) // 3)
+_SKY_MID_HEIGHT = const(_SKY_HEIGHT-_SKY_START_HEIGHT)
+
+_BEACH_HEIGHT = const(_HEIGHT - _SKY_HEIGHT)
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ GLOBALS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -57,7 +64,10 @@ def main_loop():
     loop_counter = 0
     while True:
         start_time = time.ticks_ms()
-        DISPLAY.v_gradient(0,0, _WIDTH, _HEIGHT, (0.06388889,0.96,1.0), (0.6083333,0.82,0.69))
+        DISPLAY.v_gradient(0,0, _WIDTH, _SKY_START_HEIGHT, (0.39444,0.29,1.0), (0.9194445,0.28,0.60))
+        DISPLAY.v_gradient(0,_SKY_START_HEIGHT, _WIDTH, _SKY_MID_HEIGHT, (0.9194445,0.28,0.60), (0.17222,0.87,0.97))
+        
+        DISPLAY.v_gradient(0, _SKY_HEIGHT, _WIDTH, _BEACH_HEIGHT, (0.0, 0.6, 0.8157), (0.9594723, 0.5, 0.14))
         time_diff = time.ticks_diff(time.ticks_ms(), start_time)
         
         DISPLAY.show()
@@ -68,6 +78,7 @@ def main_loop():
 # for testing, catch exceptions to deinit timer/display
 try:
     main_loop()
-except:
+except Exception as e:
+    print(e)
     BL_TIMER.deinit()
     DISPLAY.tft.deinit()
