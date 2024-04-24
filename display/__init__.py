@@ -1,6 +1,6 @@
 from display import tft_config
 from display.tft_config import color565
-import framebuf
+import framebuf, math
 
 def swap_bytes(color):
     """
@@ -12,6 +12,15 @@ def mix(val2, val1, factor=0.5):
     """Mix two values to the weight of fac"""
     output = (val1 * factor) + (val2 * (1.0 - factor))
     return output
+
+def ease_in_out_sin(x):
+    return -(math.cos(math.pi * x) - 1) / 2
+
+def ease_out_cubic(x):
+    return 1 - ((1 - x) ** 3)
+
+def ease_in_cubic(x):
+    return x * x * x
 
 def clamp(val, minimum, maximum):
     if val < minimum:
@@ -170,9 +179,9 @@ def dithered_HSV(h,s=0,v=0):
     blue_error = abs(blue - likely_blue)
     
     return (
-        (clamp(likely_red, 0, 31), clamp(unlikely_red, 0, 31), red_error),
-        (clamp(likely_green, 0, 63), clamp(unlikely_green, 0, 63), green_error),
-        (clamp(likely_blue, 0, 31), clamp(unlikely_blue, 0, 31), blue_error),
+        (clamp(likely_red, 0, 31), clamp(unlikely_red, 0, 31), (red_error)),
+        (clamp(likely_green, 0, 63), clamp(unlikely_green, 0, 63), (green_error)),
+        (clamp(likely_blue, 0, 31), clamp(unlikely_blue, 0, 31), (blue_error)),
         )
 
 class Display:
@@ -202,6 +211,10 @@ class Display:
     def pixel(self, x, y, color):
         self.fbuf.pixel(y, x, color)
     
+    def hline(self, x, y, width, color):
+        color = HSV(color)
+        self.fbuf.vline(y,x,width, color)
+    
     @micropython.viper
     def _dithered_hline(
         self,
@@ -228,7 +241,10 @@ class Display:
             g = g2 if g_offset == 0 else g1
             b = b2 if b_offset == 0 else b1
             
-            rgb = swap_bytes(combine_color565(r, g, b))
+            #rgb = swap_bytes(combine_color565(r, g, b))
+            rgb = (r << 11) | (g << 5) | b
+            rgb = ((rgb & 255) << 8) + (rgb >> 8)
+            
             fbuf.pixel(y, x, rgb)
             
             x += 1
@@ -249,6 +265,7 @@ class Display:
         # get rgb components as (likely, unlikely, error)
         r,g,b = dithered_HSV(color)
         
+        
         # find the modulo; how many time to repeat likely color, before doing unlikely color
         # avoid /0 error
         if r[2] == 0:
@@ -265,8 +282,6 @@ class Display:
             b_mod = 0
         else:
             b_mod = int(round(1 / b[2]))
-#         g_mod = int(round(1 / g[2]))
-#         b_mod = int(round(1 / b[2]))
         
         self._dithered_hline(
             x, y,
