@@ -3,6 +3,7 @@ import network
 import json
 import requests
 import ntptime
+import suncalc
 
 """
 This module is used for fetching and parsing data from the internet,
@@ -94,16 +95,28 @@ def set_time():
     except Exception as e:
         print(f"Couldn't get timezone data: {e}")
     
+def to_local_time(utc_time):
+    if type(utc_time) == tuple:
+        utc_time = time.mktime(utc_time)
+        
+    local_epoch = utc_time + TIMEZONE["currentUtcOffset"]["seconds"]
+    return time.localtime(local_epoch)
+    
 def get_local_time():
     epoch = time.time()
     local_epoch = epoch + TIMEZONE["currentUtcOffset"]["seconds"]
     return time.localtime(local_epoch)
 
 if __name__ == "__main__":
-    print(CONFIG)
-    connect_to_internet()
+    lat, lng = CONFIG['location_coords']
     
-    set_time()
-    print(get_local_time())
+    #print(CONFIG)
+    #connect_to_internet()
     
-    stop_internet_connection()
+    #set_time()
+    #print(get_local_time())
+    
+    #stop_internet_connection()
+    
+    print(suncalc.get_position(lat=lat, lng=lng, degrees=True))
+    

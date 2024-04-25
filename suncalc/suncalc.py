@@ -22,6 +22,7 @@ Port involved:
     gave practically useless results, only accurate to about half a day.
     This new approach should be obsurdly accurate (... and slow)
     and I think most embedded use cases for this module would prefer the accuracy.
+  - mpy_decimal module has been forked and updated for use with this module
 
 - Adding some additional docstrings and other formatting.
 
@@ -79,36 +80,37 @@ import math
 pd = None
 
 # shortcuts for easier to read formulas
-PI = math.pi
+#PI = math.pi
+PI = decimal.pi()
 #sin = math.sin
 #cos = math.cos
 #tan = math.tan
-asin = math.asin
+#asin = math.asin
 #atan = math.atan2
 acos = math.acos
 rad = PI / 180
 
-def sin(decimal_input):
+def sin(decimal_input) -> decimal:
     if isinstance(decimal_input, (int, float)):
         return math.sin(decimal_input)
     return decimal_input.sin()
 
-def cos(decimal_input):
+def cos(decimal_input) -> decimal:
     if isinstance(decimal_input, (int, float)):
         return math.cos(decimal_input)
     return decimal_input.cos()
 
-def asin(decimal_input):
+def asin(decimal_input) -> decimal:
     if isinstance(decimal_input, (int, float)):
         return math.asin(decimal_input)
     return decimal_input.asin()
 
-def tan(decimal_input):
+def tan(decimal_input) -> decimal:
     if isinstance(decimal_input, (int, float)):
         return math.tan(decimal_input)
     return decimal_input.tan()
 
-def atan(input1, input2):
+def atan(input1, input2) -> decimal:
     
     if isinstance(input1, (int, float)):
         input1 = decimal(input1)
@@ -117,10 +119,18 @@ def atan(input1, input2):
     
     return decimal.atan2(input1, input2)
 
-def to_degrees(decimal_input):
+def to_degrees(decimal_input) -> decimal:
     if isinstance(decimal_input, (int, float)):
         return math.degrees(decimal_input)
     return decimal_input.degrees()
+
+def sign(in_num) -> int:
+    if in_num == 0:
+        return 0
+    if in_num < 0:
+        return -1
+    if in_num >0:
+        return 1
 
 # def to_degrees(x):
 #     if not isinstance(x, (int, float)):
@@ -162,15 +172,11 @@ def to_milliseconds(epoch: int|float|tuple = None) -> decimal:
     
     # adjust for unix vs embedded epoch
     epoch = decimal(epoch + _EPOCH_OFFSET)
-    print(epoch * 1000)
+
     return epoch * 1000
 
 
 def to_julian(date):
-#     J_offset = (_J1970 * _DAY_MS) - int(0.5 * _DAY_MS)
-#     print(to_milliseconds(date) / _DAY_MS - 0.5 + _J1970)
-#     print((to_milliseconds(date) + J_offset) / _DAY_MS)
-#     print((to_milliseconds(date) + J_offset) // _DAY_MS)
     return to_milliseconds(date) / _DAY_MS - 0.5 + _J1970
 
 
@@ -190,7 +196,7 @@ def to_days(date):
 # general calculations for position
 
 # obliquity of the Earth
-e = rad * 23.4397
+e = rad * decimal('23.4397')
 
 
 def right_ascension(l, b):
@@ -210,33 +216,38 @@ def altitude(H, phi, dec):
 
 
 def sidereal_time(d, lw):
-    return rad * (280.16 + 360.9856235 * d) - lw
+    return rad * (280.16 + (decimal('360.9856235') * d)) - lw
 
 
 def astro_refraction(h):
     # the following formula works for positive altitudes only.
     # if h = -0.08901179 a div/0 would occur.
-    h = np.maximum(h, 0)
+    if type(h) == list:
+        h = [max(hi, 0) for hi in h]
+        return [decimal('0.0002967') / tan(hi + decimal('0.00312536') / (hi + decimal('0.08901179'))) for hi in h]
+    
+    
+    h = max(0, h)
 
     # formula 16.4 of "Astronomical Algorithms" 2nd edition by Jean Meeus
     # (Willmann-Bell, Richmond) 1998. 1.02 / tan(h + 10.26 / (h + 5.10)) h in
     # degrees, result in arc minutes -> converted to rad:
-    return 0.0002967 / np.tan(h + 0.00312536 / (h + 0.08901179))
+    return decimal('0.0002967') / tan(h + decimal('0.00312536') / (h + decimal('0.08901179')))
 
 
 # general sun calculations
 
 
 def solar_mean_anomaly(d):
-    return rad * (357.5291 + 0.98560028 * d)
+    return rad * (decimal('357.5291') + decimal('0.98560028') * d)
 
 
 def ecliptic_longitude(M):
     # equation of center
-    C = rad * (1.9148 * sin(M) + 0.02 * sin(2 * M) + 0.0003 * sin(3 * M))
+    C = rad * (decimal('1.9148') * sin(M) + 0.02 * sin(2 * M) + decimal('0.0003') * sin(3 * M))
 
     # perihelion of the Earth
-    P = rad * 102.9372
+    P = rad * decimal('102.9372')
 
     return M + C + P + PI
 
@@ -249,7 +260,7 @@ def sun_coords(d):
 
 
 # calculations for sun times
-J0 = 0.0009
+J0 = decimal('0.0009')
 
 
 def julian_cycle(d, lw):
@@ -267,9 +278,9 @@ def approx_transit(Ht, lw, n):
 def solar_transit_j(ds, M, L):
     # no NP arrays, so we gotta accept regular lists
     if type(ds) == list:
-        return [_J2000 + dsi + 0.0053 * sin(M) - 0.0069 * sin(2 * L) for dsi in ds]
+        return [_J2000 + dsi + decimal('0.0053') * sin(M) - decimal('0.0069') * sin(2 * L) for dsi in ds]
     
-    return _J2000 + ds + 0.0053 * sin(M) - 0.0069 * sin(2 * L)
+    return _J2000 + ds + decimal('0.0053') * sin(M) - decimal('0.0069') * sin(2 * L)
 
 
 def hour_angle(h, phi, d):
@@ -281,7 +292,7 @@ def hour_angle(h, phi, d):
 
 
 def observer_angle(height):
-    return -2.076 * math.sqrt(height) / 60
+    return decimal('-2.076') * math.sqrt(height) / 60
 
 
 def get_set_j(h, lw, phi, dec, n, M, L):
@@ -306,13 +317,14 @@ def get_position(lng, lat, date=None, degrees=False):
     az = azimuth(H, phi, c['dec'])
     al = altitude(H, phi, c['dec'])
     
+    
     if degrees:
         az = to_degrees(az)
         al = to_degrees(al)
     
     return {
-        'azimuth': az,
-        'altitude': al}
+        'azimuth': float(az),
+        'altitude': float(al)}
 
 
 def get_times(
@@ -327,7 +339,6 @@ def get_times(
     optionally, the observer height (in meters) relative to the horizon
     """
     
-    array_input = False
 
     lw = rad * -lng
     phi = rad * lat
@@ -372,23 +383,23 @@ def moon_coords(d):
     """
 
     # ecliptic longitude
-    L = rad * (218.316 + 13.176396 * d)
+    L = rad * (decimal('218.316') + decimal('13.176396') * d)
     # mean anomaly
-    M = rad * (134.963 + 13.064993 * d)
+    M = rad * (decimal('134.963') + decimal('13.064993') * d)
     # mean distance
-    F = rad * (93.272 + 13.229350 * d)
+    F = rad * (decimal('93.272') + decimal('13.229350') * d)
 
     # longitude
-    l = L + rad * 6.289 * sin(M)
+    l = L + rad * decimal('6.289') * sin(M)
     # latitude
-    b = rad * 5.128 * sin(F)
+    b = rad * decimal('5.128') * sin(F)
     # distance to the moon in km
     dt = 385001 - 20905 * cos(M)
 
     return {'ra': right_ascension(l, b), 'dec': declination(l, b), 'dist': dt}
 
 
-def getMoonPosition(date, lat, lng):
+def get_moon_position(lat, lng, date=None, degrees=False):
 
     lw = rad * -lng
     phi = rad * lat
@@ -404,9 +415,15 @@ def getMoonPosition(date, lat, lng):
 
     # altitude correction for refraction
     h = h + astro_refraction(h)
+    
+    az = azimuth(H, phi, c['dec'])
+    
+    if degrees:
+        az = to_degrees(az)
+        h = to_degrees(h)
 
     return {
-        'azimuth': azimuth(H, phi, c['dec']),
+        'azimuth': az,
         'altitude': h,
         'distance': c['dist'],
         'parallacticAngle': pa}
@@ -418,7 +435,7 @@ def getMoonPosition(date, lat, lng):
 # Richmond) 1998.
 
 
-def getMoonIllumination(date):
+def get_moon_illumination(date=None):
 
     d = to_days(date)
     s = sun_coords(d)
@@ -437,9 +454,9 @@ def getMoonIllumination(date):
         cos(s['dec']) * sin(m['dec']) * cos(s['ra'] - m['ra']))
 
     return {
-        'fraction': (1 + cos(inc)) / 2,
-        'phase': 0.5 + 0.5 * inc * np.sign(angle) / PI,
-        'angle': angle}
+        'fraction': float((1 + cos(inc)) / 2),
+        'phase': float(0.5 + 0.5 * inc * sign(angle) / PI),
+        'angle': float(angle)}
 
 
 
@@ -450,17 +467,26 @@ if __name__ == '__main__':
     lat, lng = data_parser.CONFIG['location_coords']
     
     epoch = time.time()
-    # print sun position for the next 12 hours
-    for i in range(12):
+    # print sun position for the next 4 hours
+    for i in range(4):
         time_stamp = time.localtime(epoch)
         timestr = '{:02d}:{:02d}'.format(time_stamp[3], time_stamp[4])
         print(f"{timestr} | {time_stamp[1]}/{time_stamp[2]}:")
 
         position = get_position(lat=lat, lng=lng, degrees=True, date=epoch)
-        print(f"    azimuth:{round(position['azimuth'],2)}, altitude:{round(position['altitude'],2)}")
+        print(f"sun:    azimuth:{round(position['azimuth'],2)}, altitude:{round(position['altitude'],2)}")
+        position = get_moon_position(lat=lat, lng=lng, degrees=True, date=epoch)
+        print(f"moon:   azimuth:{round(position['azimuth'],2)}, altitude:{round(position['altitude'],2)}")
         print()
         
         # add an hour to the time each iteration.
         epoch += 60 * 60
     
-    print(get_times(lat=lat, lng=lng))
+    suntimes = get_times(lat=lat, lng=lng)
+    print("sun times:")
+    for key, item in suntimes.items():
+        print(f"    {key}: {item}")
+        
+    print(f"Moon illumination: {get_moon_illumination()}")
+    
+    

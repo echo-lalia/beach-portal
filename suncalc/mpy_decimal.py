@@ -12,6 +12,9 @@ original has been expanded with a few features:
 - Quite a few math dunders have been given conversions to allow them to
   work with int/float types
 - Added methods for quickly converting DecimalNumber to other types
+- Added more standard math methods
+- Added @micropython.native all over.
+  (Please comment these out if you run out of memory)
 
 =============================================================================
 
@@ -94,6 +97,7 @@ class DecimalNumber:
                 "Only 'int' or 'str' instances are allowed for initialization")
     
     @classmethod
+    @micropython.native
     def pi(cls) -> "DecimalNumber":
         """Calculation of PI using the very fast algorithm present on the
         documentation of the module "decimal" of the Python Standard Library:
@@ -131,6 +135,7 @@ class DecimalNumber:
         return +s
 
     @classmethod
+    @micropython.native
     def e(cls) -> "DecimalNumber":
         """Calculation of e.
         It uses the Taylor series:
@@ -163,6 +168,7 @@ class DecimalNumber:
         return +e
 
     @classmethod
+    @micropython.native
     def ln2(cls) -> "DecimalNumber":
         """Calculation of ln(2).
         ln(2) = -ln(1/2) = -ln(1 - 1/2)
@@ -194,7 +200,8 @@ class DecimalNumber:
             DecimalNumber.LN2_NUMBER = (+e)._number  # + adjusts to the scale
             DecimalNumber.LN2_SCALE = (+e)._num_decimals
         return +e
-
+    
+    @micropython.native
     def exp(self, inc_scale: bool = True) -> "DecimalNumber":
         """Calculates exp(n)
         Works for any x, but for speed, it should have |x| < 1.
@@ -217,6 +224,7 @@ class DecimalNumber:
         return +r
 
     @staticmethod
+    @micropython.native
     def _exp_lt_1(n: "DecimalNumber", inc_scale: bool = True) -> "DecimalNumber":
         """ Auxiliary function to calculates exp(n)
         Expects |n| < 1 to converge rapidly
@@ -243,7 +251,8 @@ class DecimalNumber:
         # if inc_scale:
         #     DecimalNumber.set_scale(scale)
         return +e
-
+    
+    @micropython.native
     def ln(self) -> "DecimalNumber":
         """Calculates ln(n)
         Newton's method is used to solve: e**a - x = 0 ; a = ln(x)
@@ -277,7 +286,8 @@ class DecimalNumber:
 
         DecimalNumber.set_scale(scale)
         return +y1
-
+    
+    @micropython.native
     def sin(self) -> "DecimalNumber":
         """Calculates sin(x). x = radians
         It uses the Taylor series: sin(x) = x - x³/3! + x⁵/5! - x⁷/7! ...
@@ -334,6 +344,7 @@ class DecimalNumber:
         DecimalNumber.set_scale(scale)
         return +e
 
+    @micropython.native
     def cos(self) -> "DecimalNumber":
         """Calculates cos(x). x = radians
         It uses the Taylor series: cos(x) = 1 - x²/2! + x⁴/4! - x⁶/6! ...
@@ -386,7 +397,8 @@ class DecimalNumber:
 
         DecimalNumber.set_scale(scale)
         return +e
-
+    
+    @micropython.native
     def tan(self) -> "DecimalNumber":
         """Calculates tan(x) = sin(x) / cos(x). x = radians """
         x = self.clone()
@@ -422,7 +434,8 @@ class DecimalNumber:
                 t = s / c
                 DecimalNumber.set_scale(scale)
                 return +t
-
+            
+    @micropython.native
     def asin(self) -> "DecimalNumber":
         """Calculates asin(x)
         It uses the Taylor series: arcsin(x) = x + 3x³/6 + 15x⁵/336 + ...
@@ -477,7 +490,8 @@ class DecimalNumber:
             return +e
         else:
             raise DecimalNumberExceptionMathDomainError("asin(x) admits -1 <= x <= 1 only")
-
+    
+    @micropython.native
     def acos(self) -> "DecimalNumber":
         """Calculates acos(x)
         It uses the equivalence: acos(x) = π/2 - asin(x)
@@ -492,7 +506,8 @@ class DecimalNumber:
             return +a
         else:
             raise DecimalNumberExceptionMathDomainError("acos(x) admits -1 <= x <= 1 only")
-
+    
+    @micropython.native
     def atan(self) -> "DecimalNumber":
         """Calculates atan(x)
         It uses: atan(x) = asin( x / sqrt(1 + x²) )
@@ -505,7 +520,8 @@ class DecimalNumber:
 
         DecimalNumber.set_scale(scale)
         return +a
-
+    
+    @micropython.native
     @staticmethod
     def atan2(y: "DecimalNumber", x: "DecimalNumber") -> "DecimalNumber":
         """Calculates atan2(y, x), 2-argument arctangent
@@ -546,6 +562,7 @@ class DecimalNumber:
         DecimalNumber.set_scale(scale)
         return +r
     
+    @micropython.native
     def degrees(self) -> "DecimalNumber":
         """Convert radians to degrees."""
         return (self * 180) / self.pi()
@@ -561,6 +578,7 @@ class DecimalNumber:
         return DecimalNumber.VERSION_NAME
 
     @staticmethod
+    @micropython.native
     def set_scale(num_digits: int) -> None:
         """Sets the scale.
         Scale is a class value, the maximum number of decimals that a DecimalNumber can have.
@@ -573,11 +591,28 @@ class DecimalNumber:
                 "set_scale: scale must be positive")
 
     @staticmethod
+    @micropython.native
     def get_scale() -> int:
         """Gets the current scale value."""
         return DecimalNumber._scale
-
+    
     @staticmethod
+    @micropython.native
+    def _parse_scientific(number: str) -> str:
+        """Aux method for _parse_number
+        attempts to convert scientific notation into full length string.
+        
+        This method is suboptimal for converting very small floats.
+        May need overhaul in the future.
+        """
+        float_part = float(number)
+        int_part = int(float_part) # capture only what's before decimal place
+        out_str = str(float_part % 1) # capture only what's after decimal place
+        out_str = str(int_part) + out_str[1:] # remove leading 0, add int part
+        return out_str
+        
+    @staticmethod
+    @micropython.native
     def _parse_number(number: str) -> Tuple[bool, int, int]:
         """This is a static and auxiliary method to parse a string containing
         a number. If the string is parsed as a number, it returns three values:
@@ -586,11 +621,18 @@ class DecimalNumber:
             Integer representing the number of decimals.
         For example: "-12345.678" will be parsed and the values returned will be:
             (True, -12345678, 3)
-        If the parsing fails, it returns (Falsem 0, 0).
+        If the parsing fails, it returns (False, 0, 0).
         Note: this is faster than using a regular expression. Also, when using
         the regular expression "^\-?[0-9]+\.?[0-9]*" and exception was raised when
         using micropython when the string "number" was long.
         """
+        # try processing scientific notation in input
+        if 'e' in number:
+            try:
+                number = DecimalNumber._parse_scientific(number)
+            except Exception as e:
+                "Syntax error parsing '{number}': {e}"
+
           # True: correct
         # Note: 
         step: int = 1   # 1: '-', 2: [0-9], 3: '.', 4: [0-9]
@@ -638,18 +680,20 @@ class DecimalNumber:
             return (False, 0, 0)
 
     @staticmethod
+    @micropython.native
     def _from_string(number: str) -> "DecimalNumber":
         """static and auxiliary method to create a DecimalNumber from a string."""
         correct, integer_number, num_decimals = DecimalNumber._parse_number(
             number)
         if not correct:
             raise DecimalNumberExceptionParseError(
-                "Syntax error parsing '{0}'".format(number))
+                f"Syntax error parsing {type(number).__name__}: {number}")
         else:
             n = DecimalNumber(integer_number, num_decimals)
         return n
 
     @staticmethod
+    @micropython.native
     def _make_integer_comparable(n1: "DecimalNumber", n2: "DecimalNumber") -> Tuple[int]:
         """Static and auxiliary method to creates two integers from two DecimalNumber,
         without decimals, that can be compared (or sum) by taking into account their decimals.
@@ -671,6 +715,7 @@ class DecimalNumber:
         return (n1_number, n2_number)
 
     @staticmethod
+    @micropython.native
     def _isqrt(n: int) -> int:
         """Static and auxiliary method to calculate the square root
         of an integer.
@@ -690,7 +735,8 @@ class DecimalNumber:
             x1 = x2
             x2 = (x1 + n // x1) // 2
         return x2
-
+    
+    @micropython.native
     def clone(self) -> "DecimalNumber":
         """Returns a new DecimalNumber as a clone of self."""
         n = DecimalNumber()
@@ -698,13 +744,15 @@ class DecimalNumber:
         n._num_decimals = self._num_decimals
         n._is_positive = self._is_positive
         return n
-
+    
+    @micropython.native
     def copy_from(self, other: "DecimalNumber") -> None:
         """It copies on self other DecimalNumber."""
         self._number = other._number
         self._num_decimals = other._num_decimals
         self._is_positive = other._is_positive
 
+    @micropython.native
     def square_root(self) -> "DecimalNumber":
         """Calculates the square root of a DecimalNumber.
         It converts the DecimalNumber to an integer (without decimals), calculates
@@ -728,7 +776,8 @@ class DecimalNumber:
             (self._num_decimals + additional_decimals) // 2) + DecimalNumber.get_scale()
         n._reduce_to_scale()
         return n
-
+    
+    @micropython.native
     def __add__(self, other: "DecimalNumber") -> "DecimalNumber":
         """Adds two DecimalNumber.
         Returns (self + other)
@@ -784,6 +833,7 @@ class DecimalNumber:
 
         return new_number
 
+    @micropython.native
     def __iadd__(self, other: "DecimalNumber") -> "DecimalNumber":
         """Adds a DecimalNumber to itself.
         Returns (self += other)
@@ -793,7 +843,8 @@ class DecimalNumber:
         self._num_decimals = n._num_decimals
         self._is_positive = n._is_positive
         return self
-
+    
+    @micropython.native
     def __radd__(self, other: int) -> "DecimalNumber":
         """Reverse add.
         It is called for (integer + DecimalNumber).
@@ -801,6 +852,7 @@ class DecimalNumber:
         """
         return self.__add__(DecimalNumber(other))
 
+    @micropython.native
     def __sub__(self, other: "DecimalNumber") -> "DecimalNumber":
         if isinstance(other, int):
             other = DecimalNumber(other)
@@ -812,16 +864,19 @@ class DecimalNumber:
         s._is_positive = not s._is_positive
         return self.__add__(s)
 
+    @micropython.native
     def __isub__(self, other: "DecimalNumber") -> "DecimalNumber":
         n = self.__sub__(other)
         self._number = n._number
         self._num_decimals = n._num_decimals
         self._is_positive = n._is_positive
         return self
-
+    
+    @micropython.native
     def __rsub__(self, other: int) -> "DecimalNumber":
         return DecimalNumber(other).__sub__(self)
 
+    @micropython.native
     def __mul__(self, other: "DecimalNumber") -> "DecimalNumber":
         if isinstance(other, (int, float, str)):
             other = DecimalNumber(other)
@@ -832,6 +887,7 @@ class DecimalNumber:
             c_integer, self._num_decimals + other._num_decimals)
         return new_number
 
+    @micropython.native
     def __imul__(self, other: "DecimalNumber") -> "DecimalNumber":
         n = self.__mul__(other)
         self._number = n._number
@@ -839,9 +895,11 @@ class DecimalNumber:
         self._is_positive = n._is_positive
         return self
 
+    @micropython.native
     def __rmul__(self, other: int) -> "DecimalNumber":
         return self.__mul__(DecimalNumber(other))
 
+    @micropython.native
     def __truediv__(self, other: "DecimalNumber") -> "DecimalNumber":
         if isinstance(other, int):
             other = DecimalNumber(other)
@@ -859,6 +917,7 @@ class DecimalNumber:
             raise DecimalNumberExceptionDivisionByZeroError("Division by zero")
         return new_number
 
+    @micropython.native
     def __itruediv__(self, other: "DecimalNumber") -> "DecimalNumber":
         n = self.__truediv__(other)
         self._number = n._number
@@ -866,9 +925,11 @@ class DecimalNumber:
         self._is_positive = n._is_positive
         return self
 
+    @micropython.native
     def __rtruediv__(self, other: int) -> "DecimalNumber":
         return DecimalNumber(other).__truediv__(self)
 
+    @micropython.native
     def __pow__(self, other: int) -> "DecimalNumber":
         # Exponentition by squaring: https://en.wikipedia.org/wiki/Exponentiation_by_squaring
         e: int = other
@@ -901,62 +962,83 @@ class DecimalNumber:
         else:
             return +x
 
+    @micropython.native
     def __neg__(self) -> "DecimalNumber":
         n = self.clone()
         n._is_positive = not self._is_positive
         n._reduce_to_scale()
         return n
 
+    @micropython.native
     def __pos__(self) -> "DecimalNumber":
         n = self.clone()
         n._reduce_to_scale()
         return n
 
+    @micropython.native
     def __abs__(self) -> "DecimalNumber":
         n = self.clone()
         n._is_positive = True
         n._reduce_to_scale()
         return n
 
+    @micropython.native
     def __lt__(self, other: "DecimalNumber") -> bool:  # Less than
-        if isinstance(other, int):
-            other = DecimalNumber(other)
+        if type(other) != DecimalNumber:
+            try:
+                other = DecimalNumber(other)
+            except:
+                return NotImplemented
+#         if isinstance(other, int):
+#             other = DecimalNumber(other)
         n1, n2 = DecimalNumber._make_integer_comparable(self, other)
         return (n1 < n2)
 
+    @micropython.native
     def __le__(self, other: "DecimalNumber") -> bool:  # Less than or equal to
         if isinstance(other, int):
             other = DecimalNumber(other)
         n1, n2 = DecimalNumber._make_integer_comparable(self, other)
         return (n1 <= n2)
 
+    @micropython.native
     def __eq__(self, other: "DecimalNumber") -> bool:  # Equal to
         if isinstance(other, int):
             other = DecimalNumber(other)
         n1, n2 = DecimalNumber._make_integer_comparable(self, other)
         return (n1 == n2)
 
+    @micropython.native
     def __ne__(self, other: "DecimalNumber") -> bool:  # Not equal to
         if isinstance(other, int):
             other = DecimalNumber(other)
         n1, n2 = DecimalNumber._make_integer_comparable(self, other)
         return (n1 != n2)
 
+    @micropython.native
     def __gt__(self, other: "DecimalNumber") -> bool:  # Greater than
-        if isinstance(other, int):
-            other = DecimalNumber(other)
+        if type(other) != DecimalNumber:
+            try:
+                other = DecimalNumber(other)
+            except:
+                return NotImplemented
+#         if isinstance(other, int):
+#             other = DecimalNumber(other)
         n1, n2 = DecimalNumber._make_integer_comparable(self, other)
         return (n1 > n2)
 
+    @micropython.native
     def __ge__(self, other: "DecimalNumber") -> bool:  # Greater than or equal to
         if isinstance(other, int):
             other = DecimalNumber(other)
         n1, n2 = DecimalNumber._make_integer_comparable(self, other)
         return (n1 >= n2)
     
+    @micropython.native
     def __float__(self) -> float:
         return float(str(self))
     
+    @micropython.native
     def __str__(self, thousands: bool = False) -> str:
         #   Integer / Decimals: String
         #   12345 / 0: 12345
@@ -1007,12 +1089,18 @@ class DecimalNumber:
 
         return str_number
 
+
     def __repr__(self) -> str:
         return 'DecimalNumber("' + str(self) + '")'
 
+    def __int__(self) -> str:
+        return self.to_int_truncate()
+
+    @micropython.native
     def to_int_truncate(self) -> int:
         return self._number // (10 ** self._num_decimals)
 
+    @micropython.native
     def to_int_round(self) -> int:
         n = self.clone()
         s = DecimalNumber.get_scale()
@@ -1020,13 +1108,14 @@ class DecimalNumber:
         n._reduce_to_scale()
         DecimalNumber.set_scale(s)
         return n._number
-
+    
     def to_string_thousands(self) -> str:
         return self.__str__(True)
 
     # Returns a string representing the number limited to N characters, including '.', '-' and, optionally thousands.
     # It is useful to limit the number to the length of a calculator's LCD display, for example.
     # If the number does not fit, it returns "Overflow".
+    @micropython.native
     def to_string_max_length(self, max_length: int, thousands: bool = False) -> None:
         if max_length < 8:
             max_length = 8
@@ -1054,11 +1143,13 @@ class DecimalNumber:
                 str_number = "0"
             return str_number
 
+    @micropython.native
     def _eliminate_decimal_trailing_zeros(self) -> None:
         while self._num_decimals > 0 and (self._number % 10) == 0:
             self._number //= 10
             self._num_decimals -= 1
 
+    @micropython.native
     def _reduce_to_scale(self) -> None:
         if self._num_decimals > DecimalNumber.get_scale():
             # Round half to even: https://en.wikipedia.org/wiki/Rounding#Round_half_to_even
