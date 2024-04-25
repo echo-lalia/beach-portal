@@ -66,7 +66,7 @@ def stop_internet_connection():
     NIC.active(False)
     
     
-# fetch internet data
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TIME/TIMEZONE FUNCTIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def get_timezone_data():
     global TIMEZONE
     
