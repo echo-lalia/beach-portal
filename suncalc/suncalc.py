@@ -423,10 +423,10 @@ def get_moon_position(lat, lng, date=None, degrees=False):
         h = to_degrees(h)
 
     return {
-        'azimuth': az,
-        'altitude': h,
-        'distance': c['dist'],
-        'parallacticAngle': pa}
+        'azimuth': float(az),
+        'altitude': float(h),
+        'distance': float(c['dist']),
+        'parallacticAngle': float(pa)}
 
 
 # calculations for illumination parameters of the moon, based on

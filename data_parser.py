@@ -4,6 +4,8 @@ import json
 import requests
 import ntptime
 import suncalc
+import display
+import math
 
 """
 This module is used for fetching and parsing data from the internet,
@@ -29,6 +31,24 @@ with open('config.json', 'r') as config_file:
         )
 
 TIMEZONE = None
+
+SUN_DATA = ()
+
+# dict stores color values as 4 tuples of hsv(3 tuple) values.
+# these colors ordered as: (sunrise color, noon color, sunset color, midnight color)
+# and are mixed/stored in CURRENT_COLORS
+COLORS = {
+    'sky_top': ((0.625, 0.47, 0.73), (0.53611, 0.13, 1.0), (0.69444, 0.71, 0.13), (0.9693, 0.4, 0.12)),
+    'sky_mid': ((0.0, 0.16, 0.87), (0.55555, 0.5, 0.98), (0.908, 0.46, 0.5), (0.5638, 0.16, 0.08)),
+    'sky_bottom': ((0.1027, 0.87, 1.0), (0.55555, 0.99, 0.97), (0.113888, 0.87, 0.98), (0.097, 0.52, 0.0)),
+    
+    'sun': ((0.09722, 0.6, 1.0), (0.1111, 0.015, 1.0), (0.11944, 0.85, 0.95), (0.0277, 0.97, 0.82)),
+    
+    'beach_top': ((0.10555, 0.7, 0.99), (0.15277, 0.15, 0.86), (0.51111, 0.28, 0.21), (0.09722, 0.53, 0.13)),
+    'beach_bottom': ((0.09722, 0.53, 0.15), (0.14166, 0.6, 0.3), (0.53333, 0.17, 0.05), (0.09722, 0.53, 0.0)),
+    }
+
+CURRENT_COLORS = {}
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ WIFI FUNCTIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -68,10 +88,10 @@ def stop_internet_connection():
     
     
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TIME/TIMEZONE FUNCTIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def get_timezone_data():
-    global TIMEZONE
+def get_timezone_data(refresh=False):
+    global TIMEZONE, CONFIG
     
-    if TIMEZONE is None:
+    if TIMEZONE is None or refresh:
         coords = CONFIG["location_coords"]
         url = f"https://www.timeapi.io/api/TimeZone/coordinate?latitude={coords[0]}&longitude={coords[1]}"
         
@@ -80,9 +100,9 @@ def get_timezone_data():
         if response.status_code != 200:
             print(f"get_time_data failed with this response: {response.status_code}")
             return False
-    
-    TIMEZONE = json.loads(response.content)
-    print(response.content)
+        
+        TIMEZONE = json.loads(response.content)
+        
     return True
     
 def set_time():
@@ -107,16 +127,162 @@ def get_local_time():
     local_epoch = epoch + TIMEZONE["currentUtcOffset"]["seconds"]
     return time.localtime(local_epoch)
 
+
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TIME/TIMEZONE FUNCTIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def find_sun_data(date=None):
+    global SUN_DATA
+    _DAY_SECONDS = const(60 * 60 * 24)
+    _SUNSET_TIMES = (
+        (-0.833, 'sunrise', 'sunset'),
+        )
+    
+    lat, lng = CONFIG['location_coords']
+    
+    
+    # get sun times for now, tommorow, and yesterday
+    if date is None:
+        epoch = time.time()
+    else:
+        epoch = date
+    #yesterday = epoch - _DAY_SECONDS
+    #tommorow = epoch + _DAY_SECONDS
+    
+    
+    position = suncalc.get_position(lat=lat, lng=lng, degrees=True, date=epoch)
+    
+    times = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=epoch)
+    #yesterday = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=yesterday)
+    #tommorow = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=tommorow)
+    
+    
+    moon_position = suncalc.get_moon_position(lat=lat, lng=lng, degrees=True)
+    moon_illumination = suncalc.get_moon_illumination()
+    
+    SUN_DATA = {
+        'sun_position':position,
+        'sun_times': times,
+    #    'sun_tommorow': tommorow,
+    #    'sun_yesterday': yesterday,
+        'moon_position': moon_position,
+        'moon_illumination': moon_illumination,
+        }
+
+
+def get_factor(minimum, current, maximum) -> float:
+    """Calculate where "current" falls between minimum/maximum,
+    returns a float from 0.0 to 1.0
+    """
+    
+    if current >= maximum:
+        return 1.0
+    if current <= minimum:
+        return 0.0
+    
+    # rescale vals so that minimum = 0
+    current = current - minimum
+    maximum = maximum - minimum
+    
+    return current / maximum
+    
+def ease_in_circ(x):
+    return 1 - math.sqrt(1 - (x ** 2))
+
+def ease_out_circ(x):
+    return math.sqrt(1 - ((x - 1) ** 2))
+    
+
+def set_colors_by_sun(date=None ):
+    """Compare current time to sun times in SUN_DATA
+    Use that info to select and set color data
+    from COLORS to CURRENT_COLORS
+    """
+    global COLORS, CURRENT_COLORS, SUN_DATA
+    
+    sun_times = SUN_DATA['sun_times']
+    if date is None:
+        now = time.time()
+    else:
+        now = date
+    
+    last_midnight = time.mktime(sun_times['nadir'])
+    sunrise       = time.mktime(sun_times['sunrise'])
+    noon          = time.mktime(sun_times['solar_noon'])
+    sunset        = time.mktime(sun_times['sunset'])
+    next_midnight = last_midnight + _DAY_SECONDS
+    
+    # now MUST be within suntimes. adjust if not:
+    while now < last_midnight:
+        now += _DAY_SECONDS
+    while now > next_midnight:
+        now -= _DAY_SECONDS
+    
+#     set_yesterday = set_today - _DAY_SECONDS
+#     rise_tommorow = rise_today + _DAY_SECONDS
+    
+    # for this to work, times MUST be in order
+    assert last_midnight <= sunrise <= noon <= sunset <= next_midnight
+    assert last_midnight <= now <= next_midnight
+    
+    # clr_indices = 0, 1, 2, 3 for sunrise, noon, sunset, midnight
+    # determine where "now" falls between the times above
+    if last_midnight <= now <= sunrise:
+        fac = get_factor(last_midnight, now, sunrise)
+        fac = ease_in_circ(fac)
+        clr_indices = (3, 0)
+        
+    elif sunrise <= now <= noon:
+        fac = get_factor(sunrise, now, noon)
+        fac = ease_out_circ(fac)
+        clr_indices = (0, 1)
+        
+    elif noon <= now <= sunset:
+        fac = get_factor(noon, now, sunset)
+        fac = ease_in_circ(fac)
+        clr_indices = (1, 2)
+        
+    else: # sunset <= now <= next_midnight:
+        fac = get_factor(sunset, now, next_midnight)
+        fac = ease_out_circ(fac)
+        clr_indices = (2, 3)
+#   
+#     else: # midnight <= now <= rise_tommorow:
+#         fac = get_factor(midnight, now, rise_tommorow)
+#         clr_indices = (3, 0)
+        
+    # mix colors, set colors
+    for key, vals in COLORS.items():
+        clr1 = vals[clr_indices[0]]
+        clr2 = vals[clr_indices[1]]
+        CURRENT_COLORS[key] = display.mix_hsv_in_rgb(clr1, clr2, factor=fac)
+    
+    print(now)
+    print(last_midnight, sunrise, noon, sunset, next_midnight)
+    print(f"fac: {fac}, clr_indices: {clr_indices}")
+
+def update_data_calculate(date=None):
+    find_sun_data(date=date)
+    set_colors_by_sun(date=date)
+    
+    
+def update_data_internet():
+    connect_to_internet()
+    
+    set_time()
+    
+    stop_internet_connection()
+
+
+
+
 if __name__ == "__main__":
     lat, lng = CONFIG['location_coords']
     
-    #print(CONFIG)
-    #connect_to_internet()
+    print(CONFIG)
     
-    #set_time()
-    #print(get_local_time())
+    update_data_internet()
     
-    #stop_internet_connection()
-    
-    print(suncalc.get_position(lat=lat, lng=lng, degrees=True))
+    find_sun_data()
+    print(SUN_DATA)
     

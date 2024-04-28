@@ -22,12 +22,24 @@ def ease_out_cubic(x):
 def ease_in_cubic(x):
     return x * x * x
 
+def ease_in_circ(x):
+    return 1 - math.sqrt(1 - (x ** 2))
+
+def ease_out_circ(x):
+    return math.sqrt(1 - ((x - 1) ** 2))
+
 def clamp(val, minimum, maximum):
     if val < minimum:
         val = minimum
     elif val > maximum:
         val = maximum
     return val
+
+def ease_in_out_circ(x):
+    if x < 0.5:
+        return (1 - math.sqrt(1 - math.pow(2 * x, 2))) / 2
+    else:
+        return (math.sqrt(1 - math.pow(-2 * x + 2, 2)) + 1) / 2
 
 def mix_angle_float(angle1, angle2, factor=0.5):
     """take two angles as floats (range 0.0 to 1.0) and average them to the weight of factor.
@@ -119,6 +131,32 @@ def hsv_to_rgb(h, s, v):
         return v, p, q
     # Cannot get here
 
+def mix_hsv_in_rgb(hsv1, hsv2, factor=0.5):
+    """Mix two HSV tuples to the weight of factor,
+    Mix the colors in RGB color space.
+    """
+    r1,g1,b1 = hsv_to_rgb(*hsv1)
+    r2,g2,b2 = hsv_to_rgb(*hsv2)
+    
+    red = mix(r1, r2, factor=factor)
+    green = mix(g1, g2, factor=factor)
+    blue = mix(b1, b2, factor=factor)
+    
+    return rgb_to_hsv(red, green, blue)
+    
+def add_hsv_in_rgb(hsv1, hsv2, factor=0.5):
+    """Mix two HSV tuples to the weight of factor,
+    Add the colors in RGB color space.
+    """
+    r1,g1,b1 = hsv_to_rgb(*hsv1)
+    r2,g2,b2 = hsv_to_rgb(*hsv2)
+    
+    red = clamp(r1 + r2, 0, 1)
+    green = clamp(g1 + g2, 0, 1)
+    blue = clamp(b1 + b2, 0, 1)
+    
+    return rgb_to_hsv(red, green, blue)
+
 @micropython.native
 def mix_hsv(hsv1, hsv2, factor=0.5):
     """mix two HSV tuples to the weight of factor."""
@@ -144,6 +182,15 @@ def HSV(h,s=0,v=0):
     blue = int(blue * 31)
     
     return swap_bytes(combine_color565(red, green, blue))
+
+def RGB565_to_HSV(rgb):
+    r,g,b = separate_color565(rgb)
+    
+    r /= 31
+    g /= 63
+    b /= 31
+    
+    return rgb_to_hsv(r,g,b)
 
 @micropython.native
 def dithered_HSV(h,s=0,v=0):
@@ -215,6 +262,13 @@ class Display:
     def hline(self, x, y, width, color):
         color = HSV(color)
         self.fbuf.vline(y,x,width, color)
+    
+    def fill(self, color):
+        self.fbuf.fill(HSV(color))
+    
+    def ellipse(self, x, y, r1, r2, color, f=False):
+        color = HSV(color)
+        self.fbuf.ellipse(y,x,r2,r1,color, f)
     
     @micropython.viper
     def _dithered_hline(
@@ -298,6 +352,50 @@ class Display:
     def show(self):
         self.tft.bitmap(0,0, self.width, self.height, self.fbuf)
     
+    def hline_circle(self, x, y, size, colors):
+        """Designed for glow circle,
+        this function draws a circle with hlines,
+        and each hline can have a specified color.
+        """
+        y -= size // 2 # center y
+        for i in range(size):
+            fac = ((i + 1) / (size))
+            
+            if fac < 0.5:
+                fac = ease_out_circ((fac + fac))
+            else:
+                fac = 1 - ease_in_circ((fac - 0.5) * 2)
+                
+            width = int(size * fac)
+            self.hline(x - (width // 2), y + i, width, colors[i])
+
+    def glow_circle(self, x, y, radius, color, steps=6):
+        size = radius * 2 + 1
+        
+        #sample bg colors for transparency
+        colors = []
+        for i in range(size):
+            colors.append(self.get_pixel(x, y-(size//2)+i))
+            #color = add_hsv_in_rgb(color, RGB565_to_HSV(sample))
+            #colors.append(color)
+        
+        for step in range(steps):
+            
+        
+        print(size, len(colors), colors)
+        self.hline_circle(x, y, size, colors)
+#         
+#         for i in range(size):
+#             fac = ((i + 1) / (size))
+#             
+#             if fac < 0.5:
+#                 fac = ease_out_circ((fac + fac))
+#             else:
+#                 fac = 1 - ease_in_circ((fac - 0.5) * 2)
+#                 
+#             width = int(size * fac)
+#             self.hline(x - (width // 2), y + i, width, color)
+        
     @micropython.native
     def v_gradient(self, x, y, width, height, start_color, end_color, easing=None):
         fbuf = self.fbuf
@@ -323,7 +421,10 @@ if __name__ == "__main__":
     blight.value(1)
     DISPLAY = Display()
     
-    print(DISPLAY.dithered_hline( 10, 100, 100, (0.6083333,0.82,0.69)))
+    DISPLAY.v_gradient(0,0, 272, 480, (0.69444, 0.71, 0.13), (0.113888, 0.87, 0.98))
+    
+    DISPLAY.glow_circle(100, 100, 40, (0.1,0.4,1.0))
+    
     DISPLAY.show()
     
     time.sleep(2)
