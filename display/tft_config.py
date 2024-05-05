@@ -134,7 +134,7 @@ def config():
     tft.init()
     custom_init(tft)
     
-    tft.rotation(2)
+    tft.rotation(0)
     tft.invert_color(True)
     tft.mirror(True, False) # mirror on x axis. 
     

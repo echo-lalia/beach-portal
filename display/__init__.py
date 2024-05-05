@@ -242,16 +242,21 @@ class Display:
     Because display is landscape (and doesn't seem to work correctly otherwise?)
     all methods translate x/y coordinates accordingly.
     """
-    def __init__(self):
+    def __init__(self, invert_y = True, invert_x = True):
         self.tft = tft_config.config()
         self.width = self.tft.width()
         self.height = self.tft.height()
+        self.invert_y = invert_y
+        self.invert_x = invert_x
+        
+        self.buf = bytearray(self.width * self.height * 2)
         
         self.fbuf = framebuf.FrameBuffer(
-            bytearray(self.width * self.height * 2),
+            self.buf,
             self.width, self.height,
             framebuf.RGB565
             )
+        
     def get_pixel(self, x, y):
         """This method is needed because fbuf.pixel cant accept None for color."""
         clr = self.fbuf.pixel(y,x)
@@ -272,6 +277,10 @@ class Display:
     def ellipse(self, x, y, r1, r2, color, f=False):
         color = HSV(color)
         self.fbuf.ellipse(y,x,r2,r1,color, f)
+    
+    def rect(self, x, y, w, h, color, fill=False):
+        color = HSV(color)
+        self.fbuf.rect(y, x, h, w, color, fill)
     
     @micropython.viper
     def _dithered_hline(
@@ -348,12 +357,45 @@ class Display:
             r[1], g[1], b[1],
             r_mod, g_mod, b_mod,
             )
+    
+    @micropython.viper
+    def _invert_buffer(self, buffer):
+        """Invert our rgb565 framebuffer using set mirror values."""
+        width = int(self.width)
+        height = int(self.height)
+
+        x_start = int(self.width) if self.invert_x else 0
+        y_start = int(self.height) if self.invert_y else 0
         
+        x_end = 0 if self.invert_x else int(self.width)
+        y_end = 0 if self.invert_y else int(self.height)
         
+        x_step = -1 if self.invert_x else 1
+        y_step = -1 if self.invert_y else 1
         
+        source_ptr = ptr16(self.buf)
+        target = bytearray(width * height * 2)
+        target_ptr = ptr16(target)
+        
+        for y in range(0, height):
+            for x in range(0, width):
+                target_x = x_start + (x * x_step)
+                target_y = y_start + (y * y_step)
+                
+                target_idx = (target_y * width) + target_x
+                source_idx = (y * width) + x
+                
+                target_ptr[target_idx] = source_ptr[source_idx]
+        
+        return target
         
     def show(self):
-        self.tft.bitmap(0,0, self.width, self.height, self.fbuf)
+        if self.invert_x or self.invert_y:
+            buf = self._invert_buffer(self.buf)
+        else:
+            buf = self.buf
+        
+        self.tft.bitmap(0,0, self.width, self.height, buf)
         
     @micropython.native
     def hline_circle(self, x, y, size, colors):
@@ -429,6 +471,8 @@ if __name__ == "__main__":
     DISPLAY.v_gradient(0,0, 272, 480, (0.69444, 0.71, 0.13), (0.113888, 0.87, 0.98))
     
     DISPLAY.glow_circle(100, 50, 20, 40, (0.1,0.4,1.0))
+    
+    DISPLAY.rect(50,0,50,50, (0,0,0), True)
     
     DISPLAY.show()
     
