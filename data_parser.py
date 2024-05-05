@@ -34,6 +34,7 @@ with open('config.json', 'r') as config_file:
 TIMEZONE = None
 
 SUN_DATA = {}
+TIDE_LEVEL = 1
 
 # dict stores color values as 4 tuples of hsv(3 tuple) values.
 # these colors ordered as: (sunrise color, noon color, sunset color, midnight color)
@@ -105,7 +106,69 @@ def get_timezone_data(refresh=False):
         TIMEZONE = json.loads(response.content)
         
     return True
+
+def get_date_str():
+    """Return current time as a string based on ISO 8601"""
+    year, month, mday, hour, minute, second, _, _ = time.localtime()
     
+    datestr = f"{year:04d}-{month:02d}-{mday:02d}T{hour:02d}:{minute:02d}:{second:02d}Z"
+    return datestr
+
+def get_20_min_datestr():
+    """Return start and end time for last 20 minute period."""
+    _TWENTY_MINUTES = const(20 * 60)
+    
+    year, month, mday, hour, minute, second, _, _ = time.localtime(time.time())
+    nowstr = f"{year:04d}-{month:02d}-{mday:02d}T{hour:02d}:{minute:02d}:{second:02d}Z"
+    
+    year, month, mday, hour, minute, second, _, _ = time.localtime(time.time() - _TWENTY_MINUTES)
+    paststr = f"{year:04d}-{month:02d}-{mday:02d}T{hour:02d}:{minute:02d}:{second:02d}Z"
+    
+    return paststr, nowstr
+    
+def fetch_from_tide_station(station_id):
+    """Fetch current tide height from Canada tide API service"""
+    time1, time2 = get_20_min_datestr()
+    
+    url = f"https://api.iwls-sine.azure.cloud-nuage.dfo-mpo.gc.ca/api/v1/stations/{station_id}/data?time-series-code=wlo&from={time1}&to={time2}&resolution=FIVE_MINUTES"
+    response = requests.get(url)
+    
+    if response.status_code != 200:
+        print(f"fetch_from_tide_station failed with this response: {response.status_code}")
+        return False
+    
+    station_data = json.loads(response.content)
+    
+    output = []
+    
+    for item in station_data:
+        output.append(station_data[0]["value"])
+    
+    return output
+    
+    
+def get_tide_data():
+    """Fetch current tide height from Canada tide API service"""
+    global CONFIG, TIDE_LEVEL
+    
+    # tide stations https://tides.gc.ca/en/stations
+    stations = CONFIG["tide_stations"]
+    
+    all_data = []
+    
+    for station in stations:
+        data = fetch_from_tide_station(station)
+        if data:
+            all_data += data
+    
+    if not all_data:
+        return False # no data found
+    
+    TIDE_LEVEL = sum(all_data) / len(all_data)
+    
+    
+
+
 def set_time():
     try:
         ntptime.settime()
@@ -284,8 +347,12 @@ if __name__ == "__main__":
     
     print(CONFIG)
     
-    update_data_internet()
+    #connect_to_internet()
+    get_tide_data()
+    print(TIDE_LEVEL)
+    #get_tide_data()
+    #update_data_internet()
     
-    find_sun_data()
-    print(SUN_DATA)
+    #find_sun_data()
+    #print(SUN_DATA)
     
