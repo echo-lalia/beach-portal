@@ -149,6 +149,7 @@ def fetch_from_tide_station(station_id):
     
 def get_tide_data():
     """Fetch current tide height from Canada tide API service"""
+    # https://api.iwls-sine.azure.cloud-nuage.dfo-mpo.gc.ca/swagger-ui/index.html#/
     global CONFIG, TIDE_LEVEL
     
     # tide stations https://tides.gc.ca/en/stations

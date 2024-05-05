@@ -147,7 +147,9 @@ def draw_sun():
         # white glow in center
         DISPLAY.glow_circle(_CENTER_X, position, 10, 20, (0.13,1,1))
     
-
+def draw_water():
+    #TODO: add function for mirroring sky onto water, allow overlaying color onto mirrored image, interpolate box size using tide data, add fancy waves
+    pass
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Main! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -364,11 +364,11 @@ class Display:
         width = int(self.width)
         height = int(self.height)
 
-        x_start = int(self.width) if self.invert_x else 0
-        y_start = int(self.height) if self.invert_y else 0
+        x_start = int(self.width) - 1 if self.invert_x else 0
+        y_start = int(self.height) - 1 if self.invert_y else 0
         
-        x_end = 0 if self.invert_x else int(self.width)
-        y_end = 0 if self.invert_y else int(self.height)
+#         x_end = 0 if self.invert_x else int(self.width)
+#         y_end = 0 if self.invert_y else int(self.height)
         
         x_step = -1 if self.invert_x else 1
         y_step = -1 if self.invert_y else 1
