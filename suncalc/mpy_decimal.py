@@ -901,7 +901,7 @@ class DecimalNumber:
 
     @micropython.native
     def __truediv__(self, other: "DecimalNumber") -> "DecimalNumber":
-        if isinstance(other, int):
+        if isinstance(other, (int, float)):
             other = DecimalNumber(other)
         # a_integer: int = self._number if self._is_positive else -self._number
         # b_integer: int = other._number if other._is_positive else -other._number

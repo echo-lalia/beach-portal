@@ -4,6 +4,7 @@ import display
 import machine
 from machine import Pin, freq, PWM, Timer
 import data_parser
+import math
 
 freq(240_000_000)
 
@@ -24,10 +25,16 @@ _CENTER_X = const(_WIDTH//2)
 # how often to reload data from internet
 _RELOAD_DATA_SECONDS = const(60 * 60)
 
+
+SUNSET_POINT_DEGREES = math.degrees(data_parser.SUNSET_POINT)
+
 # sky size
 _SKY_HEIGHT = const((_HEIGHT * 2) // 3)
 _SKY_START_HEIGHT = const((_SKY_HEIGHT * 2) // 3)
 _SKY_MID_HEIGHT = const(_SKY_HEIGHT-_SKY_START_HEIGHT)
+# when to stop drawing sun/ start drawing moon
+_SKY_HEIGHT_SUN_CUTOFF = const(_SKY_HEIGHT + 40)
+_SKY_HEIGHT_MOON_MAX = const(_SKY_HEIGHT_SUN_CUTOFF + 20)
 
 _BEACH_HEIGHT = const(_HEIGHT - _SKY_HEIGHT)
 
@@ -67,7 +74,7 @@ def advance_clock():
     """Advance the system clock,
     used to rapdidly test different times
     """
-    _ADVANCE_SECONDS = const(60 * 60)
+    _ADVANCE_SECONDS = const(60 * 30)
     
     epoch = time.time()
     epoch += _ADVANCE_SECONDS
@@ -94,19 +101,53 @@ def draw_beach():
     colors = data_parser.CURRENT_COLORS
     DISPLAY.v_gradient(0, _SKY_HEIGHT, _WIDTH, _BEACH_HEIGHT, colors['beach_top'], colors['beach_bottom'])   
 
+def draw_moon(sun_position):
+    
+    altitude = data_parser.SUN_DATA['moon_position']['altitude']
+    height_factor = data_parser.get_factor(_SKY_HEIGHT_SUN_CUTOFF, sun_position, _SKY_HEIGHT_MOON_MAX)
+    
+    
+    
+    if altitude > 0:
+        # make moon pop up smoothly
+        altitude = altitude * height_factor \
+               + (1 - height_factor)
+        
+        position_fac = data_parser.get_factor(0, altitude, 90)
+        position = int(_SKY_HEIGHT - (_SKY_HEIGHT * position_fac))
+    else:
+        position_fac = data_parser.get_factor(0, -altitude, 90)
+        position = int(_SKY_HEIGHT + (_SKY_HEIGHT * position_fac * 2))
+    
+    
+    DISPLAY.glow_circle(_CENTER_X, position, 18,24, (0.5, 0.5, 0.5))
+
 def draw_sun():
     color = data_parser.CURRENT_COLORS['sun']
     
     altitude = data_parser.SUN_DATA['sun_position']['altitude']
+    # adjust so that sun is on horizon during sunset
+    altitude -= SUNSET_POINT_DEGREES / 2
+    
     
     if altitude > 0:
         position_fac = data_parser.get_factor(0, altitude, 90)
         position = int(_SKY_HEIGHT - (_SKY_HEIGHT * position_fac))
     else:
         position_fac = data_parser.get_factor(0, -altitude, 90)
-        position = int(_SKY_HEIGHT + (_SKY_HEIGHT * position_fac))
+        position = int(_SKY_HEIGHT + (_SKY_HEIGHT * position_fac * 2))
+
+    # draw moon only if sun out of view
+    if position > _SKY_HEIGHT_SUN_CUTOFF:
+        draw_moon(position)
+    else:
+        # main sun
+        DISPLAY.glow_circle(_CENTER_X, position, 20, 60, color)
+        
+        # white glow in center
+        DISPLAY.glow_circle(_CENTER_X, position, 10, 20, (0.13,1,1))
     
-    DISPLAY.ellipse(_CENTER_X, position, 20, 20, color, f=True)
+
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Main! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -118,6 +159,7 @@ def main_loop():
     # collect data to start
     if not _SUPRESS_TIME_SYNC:
         data_parser.update_data_internet()
+    data_parser.update_data_calculate()
     # remember how long since we last updated
     last_internet_update = time.time()
     
@@ -126,7 +168,7 @@ def main_loop():
         
         # when it has been more than _RELOAD_DATA_SECONDS, reload our data
         if time.time() - last_internet_update >= _RELOAD_DATA_SECONDS and not _SUPRESS_TIME_SYNC:
-            print(time.time() - last_internet_update)
+            #print(time.time() - last_internet_update)
             data_parser.update_data_internet()
             last_internet_update = time.time()
             
@@ -135,7 +177,9 @@ def main_loop():
         epoch = time.time()
         if _FAST_CLOCK:
             epoch += _ADVANCE_SECONDS * counter
-        data_parser.update_data_calculate(date=epoch)
+        
+        do_full_calc = (counter % 3 == 0)
+        data_parser.update_data_calculate(date=epoch, full=do_full_calc)
         
         
         
@@ -150,6 +194,8 @@ def main_loop():
         print(f"Time: {(localtime[3]-7)%24}:{localtime[4]}")
         
         counter += 1
+        if counter > 1000:
+            counter = 0
     
 # for testing, catch exceptions to deinit timer/display
 try:

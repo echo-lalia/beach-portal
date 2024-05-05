@@ -145,15 +145,15 @@ def mix_hsv_in_rgb(hsv1, hsv2, factor=0.5):
     return rgb_to_hsv(red, green, blue)
     
 def add_hsv_in_rgb(hsv1, hsv2, factor=0.5):
-    """Mix two HSV tuples to the weight of factor,
-    Add the colors in RGB color space.
+    """Mix two HSV tuples by adding in RGB,
+    factor controls weight of second color.
     """
     r1,g1,b1 = hsv_to_rgb(*hsv1)
     r2,g2,b2 = hsv_to_rgb(*hsv2)
     
-    red = clamp(r1 + r2, 0, 1)
-    green = clamp(g1 + g2, 0, 1)
-    blue = clamp(b1 + b2, 0, 1)
+    red = clamp(r1 + (r2 * factor), 0, 1)
+    green = clamp(g1 + (g2 * factor), 0, 1)
+    blue = clamp(b1 + (b2 * factor), 0, 1)
     
     return rgb_to_hsv(red, green, blue)
 
@@ -254,7 +254,10 @@ class Display:
             )
     def get_pixel(self, x, y):
         """This method is needed because fbuf.pixel cant accept None for color."""
-        return self.fbuf.pixel(y,x)
+        clr = self.fbuf.pixel(y,x)
+        if clr is None:
+            return (0,0,0)
+        return RGB565_to_HSV(swap_bytes(clr))
         
     def pixel(self, x, y, color):
         self.fbuf.pixel(y, x, color)
@@ -326,17 +329,17 @@ class Display:
         if r[2] == 0:
             r_mod = 0
         else:
-            r_mod = int(round(1 / r[2]))
+            r_mod = int(round(1 / r[2])) + 1
             
         if g[2] == 0:
             g_mod = 0
         else:
-            g_mod = int(round(1 / g[2]))
+            g_mod = int(round(1 / g[2])) + 1
             
         if b[2] == 0:
             b_mod = 0
         else:
-            b_mod = int(round(1 / b[2]))
+            b_mod = int(round(1 / b[2])) + 1
         
         self._dithered_hline(
             x, y,
@@ -351,7 +354,8 @@ class Display:
         
     def show(self):
         self.tft.bitmap(0,0, self.width, self.height, self.fbuf)
-    
+        
+    @micropython.native
     def hline_circle(self, x, y, size, colors):
         """Designed for glow circle,
         this function draws a circle with hlines,
@@ -367,34 +371,35 @@ class Display:
                 fac = 1 - ease_in_circ((fac - 0.5) * 2)
                 
             width = int(size * fac)
-            self.hline(x - (width // 2), y + i, width, colors[i])
+            self.dithered_hline(x - (width // 2), y + i, width, colors[i])
+            #self.hline(x - (width // 2), y + i, width, colors[i])
 
-    def glow_circle(self, x, y, radius, color, steps=6):
-        size = radius * 2 + 1
+    @micropython.native
+    def glow_circle(self, x, y, inner_radius, outer_radius, color, steps=10):
+        size = outer_radius * 2 + 1
+        steps = outer_radius - inner_radius
         
         #sample bg colors for transparency
         colors = []
         for i in range(size):
-            colors.append(self.get_pixel(x, y-(size//2)+i))
+            # take multiple samples because of the dithering
+            sample1 = self.get_pixel(x-1, y-outer_radius+i)
+            sample2 = self.get_pixel(x+1, y-outer_radius+i)
+            colors.append(mix_hsv(sample1, sample2))
             #color = add_hsv_in_rgb(color, RGB565_to_HSV(sample))
-            #colors.append(color)
+            #colors.append(sample1)
         
         for step in range(steps):
-            
         
-        print(size, len(colors), colors)
-        self.hline_circle(x, y, size, colors)
-#         
-#         for i in range(size):
-#             fac = ((i + 1) / (size))
-#             
-#             if fac < 0.5:
-#                 fac = ease_out_circ((fac + fac))
-#             else:
-#                 fac = 1 - ease_in_circ((fac - 0.5) * 2)
-#                 
-#             width = int(size * fac)
-#             self.hline(x - (width // 2), y + i, width, color)
+            fac = ease_in_circ((step+1) / steps)
+            blended_colors = [add_hsv_in_rgb(clr, color, factor=fac) for clr in colors]
+            
+            self.hline_circle(x, y, size, blended_colors)
+            
+            # reduce size and trim unused colors for next step
+            size = size - 2
+            colors = colors[1:-1]
+            
         
     @micropython.native
     def v_gradient(self, x, y, width, height, start_color, end_color, easing=None):
@@ -423,9 +428,9 @@ if __name__ == "__main__":
     
     DISPLAY.v_gradient(0,0, 272, 480, (0.69444, 0.71, 0.13), (0.113888, 0.87, 0.98))
     
-    DISPLAY.glow_circle(100, 100, 40, (0.1,0.4,1.0))
+    DISPLAY.glow_circle(100, 50, 20, 40, (0.1,0.4,1.0))
     
     DISPLAY.show()
     
-    time.sleep(2)
+    time.sleep(5)
     blight.value(0)

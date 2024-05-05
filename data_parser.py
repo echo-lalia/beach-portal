@@ -18,6 +18,7 @@ and for collecting other data from various API's
 # how long we can try connecting (in seconds)
 _CONNECT_TIMEOUT_SECONDS = const(20) 
 
+SUNSET_POINT = -0.3
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ GLOBALS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -32,7 +33,7 @@ with open('config.json', 'r') as config_file:
 
 TIMEZONE = None
 
-SUN_DATA = ()
+SUN_DATA = {}
 
 # dict stores color values as 4 tuples of hsv(3 tuple) values.
 # these colors ordered as: (sunrise color, noon color, sunset color, midnight color)
@@ -42,7 +43,7 @@ COLORS = {
     'sky_mid': ((0.0, 0.16, 0.87), (0.55555, 0.5, 0.98), (0.908, 0.46, 0.5), (0.5638, 0.16, 0.08)),
     'sky_bottom': ((0.1027, 0.87, 1.0), (0.55555, 0.99, 0.97), (0.113888, 0.87, 0.98), (0.097, 0.52, 0.0)),
     
-    'sun': ((0.09722, 0.6, 1.0), (0.1111, 0.015, 1.0), (0.11944, 0.85, 0.95), (0.0277, 0.97, 0.82)),
+    'sun': ((0.06111, 1.0, 1.0), (0.15, 1.0, 1.0), (0.030555, 1.0, 0.98), (0.0177, 1.0, 0.65)),
     
     'beach_top': ((0.10555, 0.7, 0.99), (0.15277, 0.15, 0.86), (0.51111, 0.28, 0.21), (0.09722, 0.53, 0.13)),
     'beach_bottom': ((0.09722, 0.53, 0.15), (0.14166, 0.6, 0.3), (0.53333, 0.17, 0.05), (0.09722, 0.53, 0.0)),
@@ -131,11 +132,14 @@ def get_local_time():
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ TIME/TIMEZONE FUNCTIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-def find_sun_data(date=None):
+def find_sun_data(date=None, full=True):
     global SUN_DATA
     _DAY_SECONDS = const(60 * 60 * 24)
+#     _SUNSET_TIMES = (
+#         (-0.833, 'sunrise', 'sunset'),
+#         )
     _SUNSET_TIMES = (
-        (-0.833, 'sunrise', 'sunset'),
+        (SUNSET_POINT, 'sunrise', 'sunset'),
         )
     
     lat, lng = CONFIG['location_coords']
@@ -150,24 +154,21 @@ def find_sun_data(date=None):
     #tommorow = epoch + _DAY_SECONDS
     
     
-    position = suncalc.get_position(lat=lat, lng=lng, degrees=True, date=epoch)
+    SUN_DATA['sun_position'] = suncalc.get_position(lat=lat, lng=lng, degrees=True, date=epoch)
     
-    times = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=epoch)
-    #yesterday = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=yesterday)
-    #tommorow = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=tommorow)
-    
-    
-    moon_position = suncalc.get_moon_position(lat=lat, lng=lng, degrees=True)
-    moon_illumination = suncalc.get_moon_illumination()
-    
-    SUN_DATA = {
-        'sun_position':position,
-        'sun_times': times,
-    #    'sun_tommorow': tommorow,
-    #    'sun_yesterday': yesterday,
-        'moon_position': moon_position,
-        'moon_illumination': moon_illumination,
-        }
+    if full:
+        SUN_DATA['sun_times'] = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=epoch)
+        SUN_DATA['moon_position'] = suncalc.get_moon_position(lat=lat, lng=lng, degrees=True)
+        SUN_DATA['moon_illumination'] = suncalc.get_moon_illumination()
+#     
+#     SUN_DATA = {
+#         'sun_position':position,
+#         'sun_times': times,
+#     #    'sun_tommorow': tommorow,
+#     #    'sun_yesterday': yesterday,
+#         'moon_position': moon_position,
+#         'moon_illumination': moon_illumination,
+#         }
 
 
 def get_factor(minimum, current, maximum) -> float:
@@ -222,6 +223,8 @@ def set_colors_by_sun(date=None ):
 #     rise_tommorow = rise_today + _DAY_SECONDS
     
     # for this to work, times MUST be in order
+    if not (last_midnight <= sunrise <= noon <= sunset <= next_midnight):
+        print(last_midnight, sunrise,noon, sunset, next_midnight)
     assert last_midnight <= sunrise <= noon <= sunset <= next_midnight
     assert last_midnight <= now <= next_midnight
     
@@ -257,12 +260,12 @@ def set_colors_by_sun(date=None ):
         clr2 = vals[clr_indices[1]]
         CURRENT_COLORS[key] = display.mix_hsv_in_rgb(clr1, clr2, factor=fac)
     
-    print(now)
-    print(last_midnight, sunrise, noon, sunset, next_midnight)
-    print(f"fac: {fac}, clr_indices: {clr_indices}")
+    #print(now)
+    #print(last_midnight, sunrise, noon, sunset, next_midnight)
+    #print(f"fac: {fac}, clr_indices: {clr_indices}")
 
-def update_data_calculate(date=None):
-    find_sun_data(date=date)
+def update_data_calculate(date=None, full=True):
+    find_sun_data(date=date, full=full)
     set_colors_by_sun(date=date)
     
     
