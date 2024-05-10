@@ -48,6 +48,9 @@ COLORS = {
     
     'beach_top': ((0.10555, 0.7, 0.99), (0.15277, 0.15, 0.86), (0.51111, 0.28, 0.21), (0.09722, 0.53, 0.13)),
     'beach_bottom': ((0.09722, 0.53, 0.15), (0.14166, 0.6, 0.3), (0.53333, 0.17, 0.05), (0.09722, 0.53, 0.0)),
+    
+    'water_top': ((0.1, 0.79, 0.93), (0.60278, 0.92, 0.68), (0.1222, 0.94, 0.86), (0.61666, 0.67, 0.27)),
+    'water': ((0.5583, 0.76, 0.49), (0.43611, 0.52, 0.84), (0.76111, 0.43, 0.50), (0.65278, 0.27, 0.46)),
     }
 
 CURRENT_COLORS = {}
@@ -222,8 +225,8 @@ def find_sun_data(date=None, full=True):
     
     if full:
         SUN_DATA['sun_times'] = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=epoch)
-        SUN_DATA['moon_position'] = suncalc.get_moon_position(lat=lat, lng=lng, degrees=True)
-        SUN_DATA['moon_illumination'] = suncalc.get_moon_illumination()
+        SUN_DATA['moon_position'] = suncalc.get_moon_position(lat=lat, lng=lng, degrees=True, date=epoch)
+        SUN_DATA['moon_illumination'] = suncalc.get_moon_illumination(date=epoch)
 #     
 #     SUN_DATA = {
 #         'sun_position':position,
@@ -349,10 +352,10 @@ if __name__ == "__main__":
     print(CONFIG)
     
     #connect_to_internet()
-    get_tide_data()
-    print(TIDE_LEVEL)
     #get_tide_data()
-    #update_data_internet()
+    #print(TIDE_LEVEL)
+    #get_tide_data()
+    update_data_internet()
     
     #find_sun_data()
     #print(SUN_DATA)

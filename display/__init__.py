@@ -2,6 +2,9 @@ from display import tft_config
 from display.tft_config import color565
 import framebuf, math
 
+# debug helper; speed up rendering by using shortcuts
+_FAST_RENDER = False
+
 def swap_bytes(color):
     """
     this just flips the left and right byte in the 16 bit color.
@@ -263,7 +266,39 @@ class Display:
         if clr is None:
             return (0,0,0)
         return RGB565_to_HSV(swap_bytes(clr))
+    
+    def color_pick(self,x,y):
+        """Like get_pixel, but take muliple samples for higher quality."""
+        samples = []
         
+        x -= 1
+        y -= 1
+        
+        for i in range(9):
+            ix = i % 3
+            iy = i // 3
+            sample = self.fbuf.pixel(y + iy, x + ix)
+            if sample is not None:
+                samples.append(swap_bytes(sample))
+        
+        red, green, blue = 0,0,0
+        
+        if len(samples) == 0:
+            return (0,0,0)
+        
+        for sample in samples:
+            r, g, b = separate_color565(sample)
+            red += r
+            green += g
+            blue += b
+        
+        red //= len(samples)
+        green //= len(samples)
+        blue //= len(samples)
+        
+        return RGB565_to_HSV(combine_color565(red, green, blue))
+        
+    
     def pixel(self, x, y, color):
         self.fbuf.pixel(y, x, color)
     
@@ -327,6 +362,10 @@ class Display:
     @micropython.native
     def dithered_hline(self, x, y, width, color):
         """Create an hline, but use dithering to represent exact colors."""
+        if _FAST_RENDER:
+            self.hline(x, y, width, color)
+            return
+        
         fbuf = self.fbuf
         
         # get rgb components as (likely, unlikely, error)
@@ -403,6 +442,10 @@ class Display:
         this function draws a circle with hlines,
         and each hline can have a specified color.
         """
+        if _FAST_RENDER:
+            self.ellipse(x, y, size//2, size//2, colors[len(colors)//2], f=True)
+            return
+        
         y -= size // 2 # center y
         for i in range(size):
             fac = ((i + 1) / (size))
@@ -418,6 +461,10 @@ class Display:
 
     @micropython.native
     def glow_circle(self, x, y, inner_radius, outer_radius, color, steps=10):
+        if _FAST_RENDER:
+            self.ellipse(x, y, inner_radius, inner_radius, color, f=True)
+            return
+
         size = outer_radius * 2 + 1
         steps = outer_radius - inner_radius
         

@@ -5,11 +5,12 @@ import machine
 from machine import Pin, freq, PWM, Timer
 import data_parser
 import math
+import framebuf
 
 freq(240_000_000)
 
 # debug tools:
-_FORCE_MAX_LIGHT_ = True
+_FORCE_MAX_LIGHT_ = False
 _FAST_CLOCK = True
 _SUPRESS_TIME_SYNC = True
 
@@ -17,6 +18,7 @@ _SUPRESS_TIME_SYNC = True
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ _CONSTANTS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 _BLIGHT_MAX = const(65535)
+#_BLIGHT_MAX = const(10000)
 _WIDTH = const(272)
 _HEIGHT = const(480)
 
@@ -32,9 +34,10 @@ SUNSET_POINT_DEGREES = math.degrees(data_parser.SUNSET_POINT)
 _SKY_HEIGHT = const((_HEIGHT * 2) // 3)
 _SKY_START_HEIGHT = const((_SKY_HEIGHT * 2) // 3)
 _SKY_MID_HEIGHT = const(_SKY_HEIGHT-_SKY_START_HEIGHT)
+
 # when to stop drawing sun/ start drawing moon
-_SKY_HEIGHT_SUN_CUTOFF = const(_SKY_HEIGHT + 40)
-_SKY_HEIGHT_MOON_MAX = const(_SKY_HEIGHT_SUN_CUTOFF + 20)
+_SKY_HEIGHT_MOON_START = const(_SKY_HEIGHT + 10)
+_SKY_HEIGHT_SUN_STOP = const(_SKY_HEIGHT_MOON_START + 60)
 
 _BEACH_HEIGHT = const(_HEIGHT - _SKY_HEIGHT)
 
@@ -63,11 +66,36 @@ def set_backlight_from_sensor(t=None):
         BLIGHT.duty_u16(_BLIGHT_MAX)
         return
     
-    reading = SENSOR.read()
+    BLIGHT.duty_u16(SENSOR.read())
     
-    BLIGHT.duty_u16(
-        int(_BLIGHT_MAX * reading)
-        )
+    
+def ease_out_circ(x):
+    return math.sqrt(1 - ((x - 1) ** 2))
+
+
+def ease_in_out_circ(x):
+    if x < 0.5:
+        return (1 - math.sqrt(1 - math.pow(2 * x, 2))) / 2
+    else:
+        return (math.sqrt(1 - math.pow(-2 * x + 2, 2)) + 1) / 2
+
+
+def ease_hold_center_circ(x):
+    """Elasticly cling to 0.5"""
+    if x < 0.5:
+        return ease_out_circ(x * 2) / 2
+    else:
+        return 1 - (ease_out_circ((x - 0.5) * 2) / 2)
+
+
+def ping_pong(value,maximum):
+    odd_pong = (int(value / maximum) % 2 == 1)
+    mod = value % maximum
+    if odd_pong:
+        return maximum - mod
+    else:
+        return mod
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ debug ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def advance_clock():
@@ -101,33 +129,31 @@ def draw_beach():
     colors = data_parser.CURRENT_COLORS
     DISPLAY.v_gradient(0, _SKY_HEIGHT, _WIDTH, _BEACH_HEIGHT, colors['beach_top'], colors['beach_bottom'])   
 
-def draw_moon(sun_position):
-    
-    altitude = data_parser.SUN_DATA['moon_position']['altitude']
-    height_factor = data_parser.get_factor(_SKY_HEIGHT_SUN_CUTOFF, sun_position, _SKY_HEIGHT_MOON_MAX)
-    
-    
-    
-    if altitude > 0:
-        # make moon pop up smoothly
-        altitude = altitude * height_factor \
-               + (1 - height_factor)
-        
-        position_fac = data_parser.get_factor(0, altitude, 90)
-        position = int(_SKY_HEIGHT - (_SKY_HEIGHT * position_fac))
-    else:
-        position_fac = data_parser.get_factor(0, -altitude, 90)
-        position = int(_SKY_HEIGHT + (_SKY_HEIGHT * position_fac * 2))
-    
-    
-    DISPLAY.glow_circle(_CENTER_X, position, 18,24, (0.5, 0.5, 0.5))
 
 def draw_sun():
+    _SUN_MIN_X = const(80)
+    _SUN_MAX_X = const(_WIDTH - _SUN_MIN_X)
+    _SUN_X_RANGE = const(_SUN_MAX_X - _SUN_MIN_X)
+    
     color = data_parser.CURRENT_COLORS['sun']
     
     altitude = data_parser.SUN_DATA['sun_position']['altitude']
     # adjust so that sun is on horizon during sunset
     altitude -= SUNSET_POINT_DEGREES / 2
+    
+    # get/format aziumuth
+    # -180 to +180:
+    azimuth = data_parser.SUN_DATA['sun_position']['azimuth']
+    # 0 to 360:
+    azimuth %= 360
+    # flatten so that 360 == 0 (and value is 0 to 180)
+    azimuth = ping_pong(azimuth, 180)
+    # 0.0 to 1.0
+    azimuth /= 180
+    # get x position based on azimuth
+    azimuth = ease_in_out_circ(azimuth)
+    #azimuth = ease_hold_center_circ(azimuth)
+    sun_x = int(_SUN_X_RANGE * azimuth) + _SUN_MIN_X
     
     
     if altitude > 0:
@@ -138,17 +164,238 @@ def draw_sun():
         position = int(_SKY_HEIGHT + (_SKY_HEIGHT * position_fac * 2))
 
     # draw moon only if sun out of view
-    if position > _SKY_HEIGHT_SUN_CUTOFF:
+    if position > _SKY_HEIGHT_MOON_START:
         draw_moon(position)
-    else:
+        
+    if position < _SKY_HEIGHT_SUN_STOP:
         # main sun
-        DISPLAY.glow_circle(_CENTER_X, position, 20, 60, color)
+        DISPLAY.glow_circle(sun_x, position, 20, 60, color)
         
         # white glow in center
-        DISPLAY.glow_circle(_CENTER_X, position, 10, 20, (0.13,1,1))
+        DISPLAY.glow_circle(sun_x, position, 10, 20, (0.13,1,1))
+        
+        
+def draw_moon(sun_position):
     
+    altitude = data_parser.SUN_DATA['moon_position']['altitude']
+    
+    azimuth = data_parser.SUN_DATA['moon_position']['azimuth']
+    # 0 to 360:
+    azimuth %= 360
+    # flatten so that 360 == 0 (and value is 0 to 180)
+    azimuth = ping_pong(azimuth, 180)
+    # 0.0 to 1.0
+    azimuth /= 180
+    # get x position based on azimuth
+    azimuth = ease_in_out_circ(azimuth)
+    #azimuth = ease_hold_center_circ(azimuth)
+    moon_x = int(_SUN_X_RANGE * azimuth) + _SUN_MIN_X
+    
+    
+    height_factor = 1 - data_parser.get_factor(_SKY_HEIGHT_MOON_START, sun_position, _SKY_HEIGHT_SUN_STOP)
+    
+    if altitude > 0:
+        position_fac = data_parser.get_factor(0, altitude, 90)
+        position = int(_SKY_HEIGHT - (_SKY_HEIGHT * position_fac))
+    else:
+        position_fac = data_parser.get_factor(0, -altitude, 90)
+        position = int(_SKY_HEIGHT + (_SKY_HEIGHT * position_fac * 2))
+        
+    # make moon pop up smoothly
+    position += int(height_factor * _HEIGHT)
+    
+    
+    fraction = data_parser.SUN_DATA['moon_illumination']['fraction']
+    # dont draw moon if it's a 'new moon'
+    if fraction > 0.05:
+        # sample color behind moon (for shadow)
+        bg_clr = DISPLAY.color_pick(moon_x, position)
+        
+        DISPLAY.glow_circle(moon_x, position, 18,24, (0.5, 0.5, 0.5))
+        
+        
+        # if moon is not full, draw a shadow on it:
+        if fraction < 0.95:
+            
+            DISPLAY.ellipse(
+                moon_x - int(36 * fraction),
+                position, 20,20,
+                bg_clr, True)
+
+#     
+# @micropython.viper
+# def _mirror_water(y_start:int,x_start:int,height:int,width:int,buffer):
+#     #NOTE: x and y are flipped on buffer
+#     
+#     #buffer = bytearray(width * height * 2)
+#     buf_ptr = ptr16(buffer)
+#     
+#     for y in range(height):
+#         for x in range(width):
+#             target_x = x_start + x
+#             target_y = y_start + y
+#             
+#             source_x = x_start - x - 1
+#             
+#             target_idx = (target_y * width) + target_x
+#             source_idx = (target_y * width) + source_x
+# 
+#             
+#             buf_ptr[target_idx] = buf_ptr[source_idx]
+# 
+# def blend_component_overlay(a,b):
+#     if a < 0.5:
+#         result = 2 * a * b
+#     else:
+#         result = 1 - 2 * (1 - a) * (1 - b)
+
+@micropython.viper
+def blend_color_fast(rgb1:int, rgb2:int) -> int:
+    # assume first color is from fbuf, unswap it
+    rgb1 = ((rgb1 & 255) << 8) + (rgb1 >> 8)
+    
+    # split color components
+    red = (rgb1 >> 11) & 0x1F
+    green = (rgb1 >> 5) & 0x3F
+    blue = rgb1 & 0x1F
+    
+    # add second components
+    red += (rgb2 >> 11) & 0x1F
+    green += (rgb2 >> 5) & 0x3F
+    blue += rgb2 & 0x1F
+    
+    # divide to get avg
+    red //= 2
+    green //= 2
+    blue //= 2
+    
+    # recombine components and reswap
+    rgb = (red << 11) | (green << 5) | blue
+    rgb = ((rgb & 255) << 8) + (rgb >> 8)
+    
+    return rgb
+
+@micropython.viper
+def _mirror_water(x_start:int,y_start:int,width:int,height:int, buffer, colors):
+    #buffer = bytearray(width * height * 2)
+    buf_ptr = ptr16(buffer)
+    
+    for y in range(height):
+        for x in range(width):
+            target_y = y_start + y
+            target_x = x_start + x
+            
+            
+            #source_y = y_start - y - 1
+            # add 'stretching' effect to reflection
+            if y % 3 == 0:
+                source_y = y_start - ((y * 12) // 13) - 1
+            elif y % 3 == 1:
+                source_y = y_start - ((y * 4) // 5) - 1
+            else:
+                source_y = y_start - y - 1
+            
+            # add ripples
+            if not (y < 2 or y > height - 3):
+                if x % 2 == 0:
+                    source_y += (x + y) % 3
+                else:
+                    source_y -= (x + y) % 3
+            
+#             if not (x == 0 or x == width - 1):
+#                 if y % 2 == 0:
+#                     source_x = target_x + 1
+#                 else:
+#                     source_x = target_x - 1
+#             else:
+#                 source_x = target_x
+            
+            target_idx = (target_y) + (target_x * _HEIGHT)
+            source_idx = (source_y) + (target_x * _HEIGHT)
+
+            
+            buf_ptr[target_idx] = int(blend_color_fast(buf_ptr[source_idx], colors[y]))
+
+def combine_color565(red, green, blue):
+    """
+    Combine red, green, and blue components into a 16-bit 565 encoding.
+    """
+    # Ensure color values are within the valid range
+    red = max(0, min(red, 31))
+    green = max(0, min(green, 63))
+    blue = max(0, min(blue, 31))
+
+    # Pack the color values into a 16-bit integer
+    return (red << 11) | (green << 5) | blue
+
+@micropython.native
+def hsv_to_rgb(h, s, v):
+    '''
+    Convert an RGB float to an HSV float.
+    From: cpython/Lib/colorsys.py
+    '''
+    if s == 0.0:
+        return v, v, v
+    i = int(h*6.0)
+    f = (h*6.0) - i
+    p = v*(1.0 - s)
+    q = v*(1.0 - s*f)
+    t = v*(1.0 - s*(1.0-f))
+    i = i % 6
+    if i == 0:
+        return v, t, p
+    if i == 1:
+        return q, v, p
+    if i == 2:
+        return p, v, t
+    if i == 3:
+        return p, q, v
+    if i == 4:
+        return t, p, v
+    if i == 5:
+        return v, p, q
+    # Cannot get here
+
+@micropython.native
+def HSV(h,s=0,v=0):
+    """Convert HSV vals into 565 value used by display."""
+    if type(h) == tuple:
+        h,s,v = h
+    
+    red, green, blue = hsv_to_rgb(h,s,v)
+    
+    red = int(red * 31)
+    green = int(green * 63)
+    blue = int(blue * 31)
+    
+    return combine_color565(red, green, blue)
+
 def draw_water():
     #TODO: add function for mirroring sky onto water, allow overlaying color onto mirrored image, interpolate box size using tide data, add fancy waves
+    clr1 = data_parser.CURRENT_COLORS['water_top']
+    clr2 = data_parser.CURRENT_COLORS['water']
+    #clr = HSV(clr)
+    
+    height = _BEACH_HEIGHT
+    
+    clrs = []
+    for i in range(height):
+        fac = i / (height-1)
+        clrs.append(
+            HSV(display.mix_hsv_in_rgb(clr1, clr2, fac))
+            )
+
+    _mirror_water(0, _SKY_HEIGHT, _WIDTH, _BEACH_HEIGHT, DISPLAY.buf, clrs)
+#     water_height = 100
+#     
+#     water_start_idx = _SKY_HEIGHT * _WIDTH * 2
+#     water_end_idx = water_start_idx + (_WIDTH * water_height) * 2 + 1
+#     water_buffer = DISPLAY.buf[water_start_idx:water_end_idx]
+#     
+#     DISPLAY.fbuf.blit(
+#         framebuf.FrameBuffer(water_buffer,water_height,_WIDTH, framebuf.RGB565),
+#         0,0,
+#         )
     pass
 
 
@@ -156,7 +403,7 @@ def draw_water():
 def main_loop():
     
     # init timer to update backlight regularly
-    BL_TIMER.init(period=10, mode=Timer.PERIODIC, callback=set_backlight_from_sensor)
+    BL_TIMER.init(period=20, mode=Timer.PERIODIC, callback=set_backlight_from_sensor)
     
     # collect data to start
     if not _SUPRESS_TIME_SYNC:
@@ -165,7 +412,7 @@ def main_loop():
     # remember how long since we last updated
     last_internet_update = time.time()
     
-    counter = 0
+    counter = 86
     while True:
         
         # when it has been more than _RELOAD_DATA_SECONDS, reload our data
@@ -189,12 +436,13 @@ def main_loop():
         draw_sky()
         draw_sun()
         draw_beach()
+        draw_water()
         DISPLAY.show()
         
             
         localtime = time.localtime(epoch)
         print(f"Time: {(localtime[3]-7)%24}:{localtime[4]}")
-        
+        print(f"Altitude: {data_parser.SUN_DATA['sun_position']['altitude']}, Azimuth: {data_parser.SUN_DATA['sun_position']['azimuth']}")
         counter += 1
         if counter > 1000:
             counter = 0

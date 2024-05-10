@@ -69,15 +69,13 @@ try:
 except:
     from suncalc.mpy_decimal import DecimalNumber as decimal
 
-
+decimal.set_scale(9)
 
 #from datetime import datetime
 import time
 
 #import numpy as np
 import math
-
-pd = None
 
 # shortcuts for easier to read formulas
 #PI = math.pi
