@@ -397,6 +397,113 @@ class Display:
             r_mod, g_mod, b_mod,
             )
     
+    @staticmethod
+    def overlay_val_float(a,b):
+        if a < 0.5:
+            return 2 * a * b
+        else:
+            return 1 - (2 * (1 - a) * (1 - b))
+            
+    @staticmethod
+    @micropython.native
+    def overlay_floats(clr1, clr2, multi=1):
+        r1,g1,b1 = separate_color565(clr1)
+        r2,g2,b2 = separate_color565(clr2)
+        
+        r1 /= 31; g1 /= 63; b1 /= 31
+        r2 /= 31; g2 /= 63; b2 /= 31
+        
+        red = (Display.overlay_val_float(r1, r2) * multi) + (r1 * (1-multi))
+        green = (Display.overlay_val_float(g1, g2) * multi) + (g1 * (1-multi))
+        blue = (Display.overlay_val_float(b1, b2) * multi) + (b1 * (1-multi))
+        
+        red *= 31
+        green *= 63
+        blue *= 31
+        
+        
+        return combine_color565(
+            int(red),
+            int(green),
+            int(blue))
+    
+    @staticmethod
+    @micropython.native
+    def _float_overlay_component(a,b,mul):
+        """Helper for the viper function, for the one part that can't use int math"""
+        return int((1 - (2 * (1 - (a/mul)) * (1 - (b/mul)))) * mul)
+        
+    @staticmethod
+    @micropython.viper
+    def viper_overlay(clr1:int, clr2:int) -> int:
+        """Use viper to overlay two 565 colors."""
+        # separate 565 color
+        r1 = ((clr1 >> 11) & 0x1F)
+        g1 = ((clr1 >> 5) & 0x3F)
+        b1 = (clr1 & 0x1F)
+        
+        r2 = ((clr2 >> 11) & 0x1F)
+        g2 = ((clr2 >> 5) & 0x3F)
+        b2 = (clr2 & 0x1F)
+
+        # preform overlay math on red/green/blue channels
+        
+        if r1 < (15):
+            red = (r1 * r2) // 31
+        else:
+            red = int(Display._float_overlay_component(r1,r2,31))
+        
+        if g1 < (31):
+            green = (g1 * g2) // 63
+        else:
+            green = int(Display._float_overlay_component(g1,g2,63))
+        
+        if b1 < (15):
+            blue = (b1 * b2) // 31
+        else:
+            blue = int(Display._float_overlay_component(b1,b2,31))
+        
+        
+        return (red << 11) | (green << 5) | blue
+    
+    @micropython.viper
+    def overlay_color(self, color:int, multi):
+        """Overlay a given color over entire framebuffer."""
+        buf = self.buf
+        buf_ptr = ptr16(self.buf)
+        buf_len = int(len(buf)) // 2
+        
+        # cache one color in memory so we can save time on repeated colors
+        cached_source = -1
+        cached_target = -1
+        # often a single pixel is different, before returning
+        cached_source2 = -1
+        cached_target2 = -1
+        
+        for i in range(0, buf_len):
+            
+            # un-swap source bytes
+            clr = buf_ptr[i]
+                
+            if clr == cached_source:
+                buf_ptr[i] = cached_target
+            elif clr == cached_source2:
+                buf_ptr[i] = cached_target2
+            else:
+                cached_source2 = cached_source
+                cached_source = clr
+                
+                clr = ((clr & 255) << 8) + (clr >> 8)
+            
+                clr = int(self.overlay_floats(clr, color, multi))
+                # re-swap bytes
+                clr = ((clr & 255) << 8) + (clr >> 8)
+                
+                cached_target2 = cached_target
+                cached_target = clr
+                
+                buf_ptr[i] = clr
+    
     @micropython.viper
     def _invert_buffer(self, buffer):
         """Invert our rgb565 framebuffer using set mirror values."""
@@ -508,20 +615,22 @@ class Display:
     
 if __name__ == "__main__":
     #import portal_main
-    import time
-    from machine import Pin
-    
-    blight = Pin(1, Pin.OUT)
-    blight.value(1)
     DISPLAY = Display()
-    
-    DISPLAY.v_gradient(0,0, 272, 480, (0.69444, 0.71, 0.13), (0.113888, 0.87, 0.98))
-    
-    DISPLAY.glow_circle(100, 50, 20, 40, (0.1,0.4,1.0))
-    
-    DISPLAY.rect(50,0,50,50, (0,0,0), True)
-    
-    DISPLAY.show()
-    
-    time.sleep(5)
-    blight.value(0)
+    DISPLAY.overlay_color(245)
+#     import time
+#     from machine import Pin
+#     
+#     blight = Pin(1, Pin.OUT)
+#     blight.value(1)
+#     DISPLAY = Display()
+#     
+#     DISPLAY.v_gradient(0,0, 272, 480, (0.69444, 0.71, 0.13), (0.113888, 0.87, 0.98))
+#     
+#     DISPLAY.glow_circle(100, 50, 20, 40, (0.1,0.4,1.0))
+#     
+#     DISPLAY.rect(50,0,50,50, (0,0,0), True)
+#     
+#     DISPLAY.show()
+#     
+#     time.sleep(5)
+#     blight.value(0)

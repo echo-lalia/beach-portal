@@ -6,6 +6,7 @@ from machine import Pin, freq, PWM, Timer
 import data_parser
 import math
 import framebuf
+from utils import *
 
 freq(240_000_000)
 
@@ -222,32 +223,6 @@ def draw_moon(sun_position):
                 position, 20,20,
                 bg_clr, True)
 
-#     
-# @micropython.viper
-# def _mirror_water(y_start:int,x_start:int,height:int,width:int,buffer):
-#     #NOTE: x and y are flipped on buffer
-#     
-#     #buffer = bytearray(width * height * 2)
-#     buf_ptr = ptr16(buffer)
-#     
-#     for y in range(height):
-#         for x in range(width):
-#             target_x = x_start + x
-#             target_y = y_start + y
-#             
-#             source_x = x_start - x - 1
-#             
-#             target_idx = (target_y * width) + target_x
-#             source_idx = (target_y * width) + source_x
-# 
-#             
-#             buf_ptr[target_idx] = buf_ptr[source_idx]
-# 
-# def blend_component_overlay(a,b):
-#     if a < 0.5:
-#         result = 2 * a * b
-#     else:
-#         result = 1 - 2 * (1 - a) * (1 - b)
 
 @micropython.viper
 def blend_color_fast(rgb1:int, rgb2:int) -> int:
@@ -301,14 +276,7 @@ def _mirror_water(x_start:int,y_start:int,width:int,height:int, buffer, colors):
                     source_y += (x + y) % 3
                 else:
                     source_y -= (x + y) % 3
-            
-#             if not (x == 0 or x == width - 1):
-#                 if y % 2 == 0:
-#                     source_x = target_x + 1
-#                 else:
-#                     source_x = target_x - 1
-#             else:
-#                 source_x = target_x
+
             
             target_idx = (target_y) + (target_x * _HEIGHT)
             source_idx = (source_y) + (target_x * _HEIGHT)
@@ -371,12 +339,22 @@ def HSV(h,s=0,v=0):
     return combine_color565(red, green, blue)
 
 def draw_water():
-    #TODO: add function for mirroring sky onto water, allow overlaying color onto mirrored image, interpolate box size using tide data, add fancy waves
+    _WATER_MINIMUM = const(16)
+    _WATER_RANGE = const(_BEACH_HEIGHT - _WATER_MINIMUM)
+    
+    
     clr1 = data_parser.CURRENT_COLORS['water_top']
     clr2 = data_parser.CURRENT_COLORS['water']
     #clr = HSV(clr)
     
-    height = _BEACH_HEIGHT
+    # min/max data pulled from https://tides.gc.ca/en/stations/07707
+    height = int(
+            get_factor(
+            -0.12,
+            data_parser.TIDE_LEVEL,
+            5.77,
+            ) * _WATER_RANGE
+        ) + _WATER_MINIMUM
     
     clrs = []
     for i in range(height):
@@ -385,18 +363,7 @@ def draw_water():
             HSV(display.mix_hsv_in_rgb(clr1, clr2, fac))
             )
 
-    _mirror_water(0, _SKY_HEIGHT, _WIDTH, _BEACH_HEIGHT, DISPLAY.buf, clrs)
-#     water_height = 100
-#     
-#     water_start_idx = _SKY_HEIGHT * _WIDTH * 2
-#     water_end_idx = water_start_idx + (_WIDTH * water_height) * 2 + 1
-#     water_buffer = DISPLAY.buf[water_start_idx:water_end_idx]
-#     
-#     DISPLAY.fbuf.blit(
-#         framebuf.FrameBuffer(water_buffer,water_height,_WIDTH, framebuf.RGB565),
-#         0,0,
-#         )
-    pass
+    _mirror_water(0, _SKY_HEIGHT, _WIDTH, height, DISPLAY.buf, clrs)
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Main! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -431,12 +398,15 @@ def main_loop():
         data_parser.update_data_calculate(date=epoch, full=do_full_calc)
         
         
-        
         # graphics:
         draw_sky()
         draw_sun()
         draw_beach()
         draw_water()
+        
+        # add overlay to display
+        DISPLAY.overlay_color(49173, 0.5)
+        
         DISPLAY.show()
         
             

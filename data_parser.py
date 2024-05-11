@@ -34,7 +34,7 @@ with open('config.json', 'r') as config_file:
 TIMEZONE = None
 
 SUN_DATA = {}
-TIDE_LEVEL = 1
+TIDE_LEVEL = 1.5 # random/arbitrary val to start
 
 # dict stores color values as 4 tuples of hsv(3 tuple) values.
 # these colors ordered as: (sunrise color, noon color, sunset color, midnight color)
@@ -340,6 +340,7 @@ def update_data_internet():
     connect_to_internet()
     
     set_time()
+    get_tide_data()
     
     stop_internet_connection()
 
@@ -355,7 +356,7 @@ if __name__ == "__main__":
     #get_tide_data()
     #print(TIDE_LEVEL)
     #get_tide_data()
-    update_data_internet()
+    #update_data_internet()
     
     #find_sun_data()
     #print(SUN_DATA)
