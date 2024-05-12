@@ -55,6 +55,22 @@ COLORS = {
 
 CURRENT_COLORS = {}
 
+# based on sun height
+OVERLAY_SUN_COLORS = (
+# max down
+(0.6472, 0.81, 0.15),
+# slightly down
+(0.5611, 0.27, 0.34),
+# horizon
+(0.8944, 0.25, 0.47),
+# slightly up
+(0.108, 0.3, 0.6),
+# max up
+(0.133, 0.55, 0.79),
+)
+
+CURRENT_OVERLAY = 0
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ WIFI FUNCTIONS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def connect_to_internet():
@@ -259,6 +275,34 @@ def ease_in_circ(x):
 
 def ease_out_circ(x):
     return math.sqrt(1 - ((x - 1) ** 2))
+
+def set_overlay_colors():
+    global OVERLAY_SUN_COLORS, CURRENT_OVERLAY, SUN_DATA
+    
+    # point where we switch from horizon/day colors, to day/noon colors
+    _MID_FACTOR = const(0.3)
+    
+    # find factor based on sun height
+    altitude = SUN_DATA['sun_position']['altitude']
+    sun_up = altitude > 0
+    
+    if sun_up:
+        fac = get_factor(0, altitude, 90)
+        colors = OVERLAY_SUN_COLORS[2:]
+    else:
+        fac = get_factor(0, -altitude, 90)
+        colors = tuple(reversed(OVERLAY_SUN_COLORS[:3]))
+    
+    if fac > _MID_FACTOR:
+        #rescale mid_factor-1, to 0-1
+        fac -= _MID_FACTOR
+        fac *= 1 / (1 - _MID_FACTOR)
+        CURRENT_OVERLAY = display.mix_hsv_in_rgb(colors[1], colors[2], factor=fac)
+    else:
+        # rescale 0-mid_factor, to 0-1
+        fac *= 1 / _MID_FACTOR
+        CURRENT_OVERLAY = display.mix_hsv_in_rgb(colors[0], colors[1], factor=fac)
+    
     
 
 def set_colors_by_sun(date=None ):
@@ -334,6 +378,7 @@ def set_colors_by_sun(date=None ):
 def update_data_calculate(date=None, full=True):
     find_sun_data(date=date, full=full)
     set_colors_by_sun(date=date)
+    set_overlay_colors()
     
     
 def update_data_internet():
@@ -356,7 +401,22 @@ if __name__ == "__main__":
     #get_tide_data()
     #print(TIDE_LEVEL)
     #get_tide_data()
-    #update_data_internet()
+    
+    
+    update_data_internet()
+    print(
+f"""
+
+Timezone:
+{TIMEZONE}
+
+Tide level:
+{TIDE_LEVEL}
+
+Sun data:
+{SUN_DATA}
+
+""")
     
     #find_sun_data()
     #print(SUN_DATA)

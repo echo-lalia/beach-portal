@@ -7,6 +7,7 @@ import data_parser
 import math
 import framebuf
 from utils import *
+import random
 
 freq(240_000_000)
 
@@ -338,6 +339,34 @@ def HSV(h,s=0,v=0):
     
     return combine_color565(red, green, blue)
 
+def draw_stars():
+    _MAX_STARS = const(1000)
+    colors = (65088, 63421, 65535, 64640, 61374, 65472, 42080, 58897, 61257, 65534, 63451, 65510)
+    
+    # number of stars are based on the altitude of sun.
+    # This lets us see more stars the later it is.
+    altitude = data_parser.SUN_DATA['sun_position']['altitude']
+    # no point drawing if sun above horizon
+    if altitude > 0:
+        return
+    
+    # convert to floating point representation of num stars
+    altitude = (altitude * -1) / 90
+    
+    num_stars = int(_MAX_STARS * altitude)
+    for i in range(num_stars):
+        # draw each star with a random position
+        x = random.randint(0,_WIDTH)
+        y = random.randint(0,_SKY_HEIGHT)
+        clr = random.choice(colors)
+        
+        # fac representing individual star height
+        fac = (1 - y / _SKY_HEIGHT) * random.randint(0,100)
+        
+        DISPLAY.add_pixel(x,y,clr,int(fac))
+    
+    
+
 def draw_water():
     _WATER_MINIMUM = const(16)
     _WATER_RANGE = const(_BEACH_HEIGHT - _WATER_MINIMUM)
@@ -379,15 +408,19 @@ def main_loop():
     # remember how long since we last updated
     last_internet_update = time.time()
     
-    counter = 86
+    counter = 12
     while True:
+        # init random with current time in hours.
+        # This lets the contents of the loop be different every hour, without changing every single frame
+        random.seed(time.time() // 3600)
+        
         
         # when it has been more than _RELOAD_DATA_SECONDS, reload our data
         if time.time() - last_internet_update >= _RELOAD_DATA_SECONDS and not _SUPRESS_TIME_SYNC:
             #print(time.time() - last_internet_update)
             data_parser.update_data_internet()
             last_internet_update = time.time()
-            
+        
         
         # update calculated data every cycle
         epoch = time.time()
@@ -400,12 +433,13 @@ def main_loop():
         
         # graphics:
         draw_sky()
+        draw_stars()
         draw_sun()
         draw_beach()
         draw_water()
         
         # add overlay to display
-        DISPLAY.overlay_color(49173, 0.5)
+        DISPLAY.overlay_color(HSV(data_parser.CURRENT_OVERLAY), 100)
         
         DISPLAY.show()
         

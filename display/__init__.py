@@ -301,6 +301,22 @@ class Display:
     
     def pixel(self, x, y, color):
         self.fbuf.pixel(y, x, color)
+        
+    def add_pixel(self, x, y, color, percent=100):
+        bg = self.fbuf.pixel(y,x)
+        if bg is None:
+            return
+        bg = swap_bytes(bg)
+        color = self.add_viper(bg, color, percent)
+        self.fbuf.pixel(y, x, swap_bytes(color))
+        
+    def overlay_pixel(self, x, y, color, percent=100):
+        bg = self.fbuf.pixel(y,x)
+        if bg is None:
+            return
+        bg = swap_bytes(bg)
+        color = self.overlay_viper(bg, color, percent)
+        self.fbuf.pixel(y, x, swap_bytes(color))
     
     def hline(self, x, y, width, color):
         color = HSV(color)
@@ -433,76 +449,269 @@ class Display:
         """Helper for the viper function, for the one part that can't use int math"""
         return int((1 - (2 * (1 - (a/mul)) * (1 - (b/mul)))) * mul)
         
+#     @staticmethod
+#     @micropython.viper
+#     def viper_overlay(clr1:int, clr2:int) -> int:
+#         """Use viper to overlay two 565 colors."""
+#         # separate 565 color
+#         r1 = ((clr1 >> 11) & 0x1F)
+#         g1 = ((clr1 >> 5) & 0x3F)
+#         b1 = (clr1 & 0x1F)
+#         
+#         r2 = ((clr2 >> 11) & 0x1F)
+#         g2 = ((clr2 >> 5) & 0x3F)
+#         b2 = (clr2 & 0x1F)
+# 
+#         # preform overlay math on red/green/blue channels
+#         
+#         if r1 < (15):
+#             red = (r1 * r2) // 31
+#         else:
+#             red = int(Display._float_overlay_component(r1,r2,31))
+#         
+#         if g1 < (31):
+#             green = (g1 * g2) // 63
+#         else:
+#             green = int(Display._float_overlay_component(g1,g2,63))
+#         
+#         if b1 < (15):
+#             blue = (b1 * b2) // 31
+#         else:
+#             blue = int(Display._float_overlay_component(b1,b2,31))
+#         
+#         
+#         return (red << 11) | (green << 5) | blue
+    
+#     @staticmethod
+#     @micropython.viper
+#     def overlay_viper(clr1:int, clr2:int, percentage:int=100) -> int:
+#         """Fast viper function for overlaying two colors."""
+#         # separate rgb565
+#         r1 = (clr1 >> 11) & 0x1F
+#         g1 = (clr1 >> 5) & 0x3F
+#         b1 = clr1 & 0x1F
+#         
+#         r2 = (clr2 >> 11) & 0x1F
+#         g2 = (clr2 >> 5) & 0x3F
+#         b2 = clr2 & 0x1F
+#         
+#         # preform overlay math on each component pair
+#         # this would be better to read if it were separated to another function,
+#         # however it's faster if it's all inline
+#         
+#         divisor = 31
+#         if r1 < (divisor // 2 + 1):
+#             red = (2 * r1 * r2) // divisor
+#         else:
+#             # invert colors
+#             ir1 = divisor - r1
+#             ir2 = divisor - r2
+#             # multiply
+#             output = (2 * ir1 * ir2) // divisor
+#             #uninvert output
+#             output = divisor - output
+#             red = output
+#         
+#         divisor = 63
+#         if g1 < (divisor // 2 + 1):
+#             green = (2 * g1 * g2) // divisor
+#         else:
+#             # invert colors
+#             ig1 = divisor - g1
+#             ig2 = divisor - g2
+#             # multiply
+#             output = (2 * ig1 * ig2) // divisor
+#             #uninvert output
+#             output = divisor - output
+#             green = output
+#         
+#         divisor = 31
+#         if b1 < (divisor // 2 + 1):
+#             blue = (2 * b1 * b2) // divisor
+#         else:
+#             # invert colors
+#             ib1 = divisor - b1
+#             ib2 = divisor - b2
+#             # multiply
+#             output = (2 * ib1 * ib2) // divisor
+#             #uninvert output
+#             output = divisor - output
+#             blue = output
+#         
+#         # apply percentages
+#         bg_percent = 100 - percentage
+#         
+#         red = (red * percentage + r1 * bg_percent) // 100
+#         
+#         green = (green * percentage + g1 * bg_percent) // 100
+#         
+#         blue = (blue * percentage + b1 * bg_percent) // 100
+#         
+#         # combine color565
+#         return (red << 11) | (green << 5) | blue
     @staticmethod
     @micropython.viper
-    def viper_overlay(clr1:int, clr2:int) -> int:
-        """Use viper to overlay two 565 colors."""
-        # separate 565 color
-        r1 = ((clr1 >> 11) & 0x1F)
-        g1 = ((clr1 >> 5) & 0x3F)
-        b1 = (clr1 & 0x1F)
+    def add_viper(clr1:int, clr2:int, percentage:int=100) -> int:
+        """Fast viper function for adding two colors."""
+        # separate rgb565
+        r1 = (clr1 >> 11) & 0x1F
+        g1 = (clr1 >> 5) & 0x3F
+        b1 = clr1 & 0x1F
         
-        r2 = ((clr2 >> 11) & 0x1F)
-        g2 = ((clr2 >> 5) & 0x3F)
-        b2 = (clr2 & 0x1F)
+        r2 = (clr2 >> 11) & 0x1F
+        g2 = (clr2 >> 5) & 0x3F
+        b2 = clr2 & 0x1F
+        
+        # preform overlay math on each component pair
+        # this would be better to read if it were separated to another function,
+        # however it's faster if it's all inline
+        red = r1 + r2
+        green = g1 + g2
+        blue = b1 + b2
+        
+        # apply percentages
+        bg_percent = 100 - percentage
+        
+        red = (red * percentage + r1 * bg_percent) // 100
+        green = (green * percentage + g1 * bg_percent) // 100
+        blue = (blue * percentage + b1 * bg_percent) // 100
+        
+        if red > 31:
+            red = 31
+        if green > 63:
+            green = 63
+        if blue > 31:
+            blue = 31
+        
+        # combine color565
+        return (red << 11) | (green << 5) | blue
 
-        # preform overlay math on red/green/blue channels
+    @staticmethod
+    @micropython.viper
+    def overlay_viper(clr1:int, clr2:int, percentage:int=100) -> int:
+        """Fast viper function for overlaying two colors."""
+        # separate rgb565
+        r1 = (clr1 >> 11) & 0x1F
+        g1 = (clr1 >> 5) & 0x3F
+        b1 = clr1 & 0x1F
         
+        r2 = (clr2 >> 11) & 0x1F
+        g2 = (clr2 >> 5) & 0x3F
+        b2 = clr2 & 0x1F
+        
+        # preform overlay math on each component pair
+        # this would be better to read if it were separated to another function,
+        # however it's faster if it's all inline
         if r1 < (15):
-            red = (r1 * r2) // 31
+            red = (2 * r1 * r2) // 31
         else:
-            red = int(Display._float_overlay_component(r1,r2,31))
+            # invert colors
+            # multiply
+            red = (2 * (31 - r1) * (31 - r2)) // 31
+            #uninvert output
+            red = 31 - red
         
         if g1 < (31):
-            green = (g1 * g2) // 63
+            green = (2 * g1 * g2) // 63
         else:
-            green = int(Display._float_overlay_component(g1,g2,63))
+            # invert colors
+            # multiply
+            green = (2 * (63 - g1) * (63 - g2)) // 63
+            #uninvert output
+            green = 63 - green
         
         if b1 < (15):
-            blue = (b1 * b2) // 31
+            blue = (2 * b1 * b2) // 31
         else:
-            blue = int(Display._float_overlay_component(b1,b2,31))
+            # invert colors
+            # multiply
+            blue = (2 * (31 - b1) * (31 - b2)) // 31
+            #uninvert output
+            blue = 31 - blue
         
+        # apply percentages
+        bg_percent = 100 - percentage
         
+        red = (red * percentage + r1 * bg_percent) // 100
+        green = (green * percentage + g1 * bg_percent) // 100
+        blue = (blue * percentage + b1 * bg_percent) // 100
+        
+        # combine color565
         return (red << 11) | (green << 5) | blue
     
+
     @micropython.viper
-    def overlay_color(self, color:int, multi):
+    def overlay_color(self, color:int, percentage:int):
         """Overlay a given color over entire framebuffer."""
+        _ALL_RGB_BYTES = const(65535 * 2)
+        
         buf = self.buf
         buf_ptr = ptr16(self.buf)
         buf_len = int(len(buf)) // 2
         
-        # cache one color in memory so we can save time on repeated colors
-        cached_source = -1
-        cached_target = -1
-        # often a single pixel is different, before returning
-        cached_source2 = -1
-        cached_target2 = -1
+        # abuse our 8mb psram, and just make room to store every possible color
+        color_cache = bytearray(_ALL_RGB_BYTES)
+        cache_ptr = ptr16(color_cache)
         
+        # Iterate through every pixel
         for i in range(0, buf_len):
-            
-            # un-swap source bytes
-            clr = buf_ptr[i]
+            source_clr = buf_ptr[i]
                 
-            if clr == cached_source:
-                buf_ptr[i] = cached_target
-            elif clr == cached_source2:
-                buf_ptr[i] = cached_target2
+            # check if we have cached color (make the assumption that 0 is uncached)
+            if cache_ptr[source_clr] != 0:
+                buf_ptr[i] = cache_ptr[source_clr]
+                
+            # otherwise, calculate, and store result
             else:
-                cached_source2 = cached_source
-                cached_source = clr
-                
-                clr = ((clr & 255) << 8) + (clr >> 8)
-            
-                clr = int(self.overlay_floats(clr, color, multi))
+                # un-swap bytes
+                clr = ((source_clr & 255) << 8) + (source_clr >> 8)
+                # get overlay color
+                clr = int(self.overlay_viper(clr, color, percentage))
                 # re-swap bytes
                 clr = ((clr & 255) << 8) + (clr >> 8)
                 
-                cached_target2 = cached_target
-                cached_target = clr
-                
+                # cache result
+                cache_ptr[source_clr] = clr
+                # display results
                 buf_ptr[i] = clr
+    
+#     @micropython.viper
+#     def overlay_color(self, color:int, multi):
+#         """Overlay a given color over entire framebuffer."""
+#         buf = self.buf
+#         buf_ptr = ptr16(self.buf)
+#         buf_len = int(len(buf)) // 2
+#         
+#         # cache one color in memory so we can save time on repeated colors
+#         cached_source = -1
+#         cached_target = -1
+#         # often a single pixel is different, before returning
+#         cached_source2 = -1
+#         cached_target2 = -1
+#         
+#         for i in range(0, buf_len):
+#             
+#             # un-swap source bytes
+#             clr = buf_ptr[i]
+#                 
+#             if clr == cached_source:
+#                 buf_ptr[i] = cached_target
+#             elif clr == cached_source2:
+#                 buf_ptr[i] = cached_target2
+#             else:
+#                 cached_source2 = cached_source
+#                 cached_source = clr
+#                 
+#                 clr = ((clr & 255) << 8) + (clr >> 8)
+#             
+#                 clr = int(self.overlay_floats(clr, color, multi))
+#                 # re-swap bytes
+#                 clr = ((clr & 255) << 8) + (clr >> 8)
+#                 
+#                 cached_target2 = cached_target
+#                 cached_target = clr
+#                 
+#                 buf_ptr[i] = clr
     
     @micropython.viper
     def _invert_buffer(self, buffer):
