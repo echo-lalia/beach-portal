@@ -1,7 +1,7 @@
 from data_parser import COLORS as colors
 import display
 from machine import Pin
-
+from images import mountain1
 
 
 _BLIGHT_MAX = const(65535)
@@ -36,5 +36,17 @@ for i in range(4):
     position = 90
     
     DISPLAY.ellipse(x + _BAR_CENTER, position, 20, 20, colors['sun'][i], f=True)
-    
+
+mountain_height = _SKY_HEIGHT - mountain1.WIDTH
+skymid_offset = mountain_height - _SKY_START_HEIGHT
+grad_colors = []
+# starting factor 
+for i in range(mountain1.WIDTH):
+    #fac = ((_SKY_HEIGHT - mountain1.WIDTH + i) - _SKY_MID_HEIGHT) / (_SKY_HEIGHT - _SKY_MID_HEIGHT)
+    #print(fac)
+    print(skymid_offset, mountain_height, _SKY_MID_HEIGHT)
+    fac = (i + skymid_offset) / (mountain1.WIDTH + skymid_offset)
+    grad_colors.append(display.mix_hsv(colors['sky_mid'][2], colors['sky_bottom'][2], factor=fac))
+
+DISPLAY.draw_image_fancy(mountain1, grad_colors, 10, mountain_height, 0, 100)
 DISPLAY.show()

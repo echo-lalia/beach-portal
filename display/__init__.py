@@ -302,6 +302,14 @@ class Display:
     def pixel(self, x, y, color):
         self.fbuf.pixel(y, x, color)
         
+    def mix_pixel(self, x, y, color, percent=100):
+        bg = self.fbuf.pixel(y,x)
+        if bg is None:
+            return
+        bg = swap_bytes(bg)
+        color = self.mix_viper(bg, color, percent)
+        self.fbuf.pixel(y, x, swap_bytes(color))
+        
     def add_pixel(self, x, y, color, percent=100):
         bg = self.fbuf.pixel(y,x)
         if bg is None:
@@ -551,6 +559,36 @@ class Display:
 #         return (red << 11) | (green << 5) | blue
     @staticmethod
     @micropython.viper
+    def mix_viper(clr1:int, clr2:int, percentage:int=100) -> int:
+        """Fast viper function for mixing two colors."""
+        # separate rgb565
+        r1 = (clr1 >> 11) & 0x1F
+        g1 = (clr1 >> 5) & 0x3F
+        b1 = clr1 & 0x1F
+        
+        r2 = (clr2 >> 11) & 0x1F
+        g2 = (clr2 >> 5) & 0x3F
+        b2 = clr2 & 0x1F
+        
+        # apply percentages
+        bg_percent = 100 - percentage
+        
+        red = (r2 * percentage + r1 * bg_percent) // 100
+        green = (g2 * percentage + g1 * bg_percent) // 100
+        blue = (b2 * percentage + b1 * bg_percent) // 100
+        
+        if red > 31:
+            red = 31
+        if green > 63:
+            green = 63
+        if blue > 31:
+            blue = 31
+        
+        # combine color565
+        return (red << 11) | (green << 5) | blue
+
+    @staticmethod
+    @micropython.viper
     def add_viper(clr1:int, clr2:int, percentage:int=100) -> int:
         """Fast viper function for adding two colors."""
         # separate rgb565
@@ -641,8 +679,8 @@ class Display:
     
 
     @micropython.viper
-    def overlay_color(self, color:int, percentage:int):
-        """Overlay a given color over entire framebuffer."""
+    def overlay_color(self, color:int, percentage:int, mix_color:int, mix_opacity:int):
+        """Overlay (and normal mix) a given color over entire framebuffer."""
         _ALL_RGB_BYTES = const(65535 * 2)
         
         buf = self.buf
@@ -665,8 +703,12 @@ class Display:
             else:
                 # un-swap bytes
                 clr = ((source_clr & 255) << 8) + (source_clr >> 8)
+                if mix_opacity != 0:
+                    # add mix color
+                    clr = int(self.mix_viper(clr, mix_color, mix_opacity))
                 # get overlay color
                 clr = int(self.overlay_viper(clr, color, percentage))
+                
                 # re-swap bytes
                 clr = ((clr & 255) << 8) + (clr >> 8)
                 
@@ -822,6 +864,196 @@ class Display:
             #fbuf.vline(y+i, x, width, HSV(color))
             self.dithered_hline(x, y+i, width, color)
     
+    def blit_buffer(self, buffer, x, y, width, height, key=-1, palette=None):
+        """
+        Copy buffer to display framebuf at the given location.
+
+        Args:
+            buffer (bytes): Data to copy to display
+            x (int): Top left corner x coordinate
+            Y (int): Top left corner y coordinate
+            width (int): Width
+            height (int): Height
+            key (int): color to be considered transparent
+            palette (framebuf): the color pallete to use for the buffer
+        """
+        self.fbuf.blit(framebuf.FrameBuffer(buffer, width, height, framebuf.RGB565), x, y, key, palette)
+
+    def bitmap_icons(self, bitmap_module, bitmap, color, x, y, invert_colors=False):
+        """
+        Draw a 2 color bitmap as a transparent icon on display,
+        at the specified column and row, using given color and memoryview object.
+        
+        This function was particularly designed for use with MicroHydra Launcher,
+        but could probably be useful elsewhere too.
+
+        Args:
+            (bitmap_module): The module containing the bitmap to draw
+            bitmap: The actual bitmap buffer to draw
+            color: the non-transparent color of the bitmap
+            x (int): column to start drawing at
+            y (int): row to start drawing at
+            invert_colors (bool): flip transparent and non-tranparent parts of bitmap.
+           
+        """
+        x, y, = y, x
+        
+        width = bitmap_module.WIDTH
+        height = bitmap_module.HEIGHT
+        to_col = x + width - 1
+        to_row = y + height - 1
+        
+
+        bitmap_size = height * width
+        buffer_len = bitmap_size * 2
+        bpp = bitmap_module.BPP
+        bs_bit = 0
+        needs_swap = True
+        buffer = bytearray(buffer_len)
+        
+        if needs_swap:
+            color = swap_bytes(color)
+            
+        #prevent bg color from being invisible
+        if color == 0:
+            palette = (65535, color)
+        else:
+            palette = (0, color)
+        
+        for i in range(0, buffer_len, 2):
+            color_index = 0
+            for _ in range(bpp):
+                color_index = (color_index << 1) | (
+                    (bitmap[bs_bit >> 3] >> (7 - (bs_bit & 7))) & 1
+                )
+                bs_bit += 1
+
+            color = palette[color_index]
+
+            buffer[i] = color & 0xFF
+            buffer[i + 1] = color >> 8
+
+        
+        self.blit_buffer(buffer,x,y,width,height,key=palette[0])
+
+    @micropython.viper
+    def draw_image_fancy(self, module, color_list, x:int, y:int, key:int, opacity_percent:int):
+        # TODO: add method of selecting color from list of colors instead of one color
+        x, y, = y, x
+        
+        bitmap = module.BITMAP
+        width = int(module.WIDTH)
+        height = int(module.HEIGHT)
+        to_col = x + width - 1
+        to_row = y + height - 1
+
+        bitmap_size = height * width
+        buffer_len = bitmap_size * 2
+        bpp = int(module.BPP)
+        bs_bit = 0
+
+        buffer = bytearray(buffer_len)
+        
+#         color = swap_bytes(color)
+        
+        colors = bytearray(width * 2)
+        color_ptr = ptr16(colors)
+        # process color_list into color array
+        for i in range(width):
+            color_ptr[i] = int(HSV(color_list[i]))
+        
+        
+        for i in range(0, buffer_len, 2):
+            color_index = 0
+            for _ in range(bpp):
+                color_index = (color_index << 1) | (
+                    (int(bitmap[bs_bit >> 3]) >> (7 - (bs_bit & 7))) & 1
+                )
+                bs_bit += 1
+            
+            if color_index == 0:
+                color = key
+            else:
+                ix = (i // 2) % width
+                color = color_ptr[ix]
+            #color = palette[color_index]
+
+            buffer[i] = color & 0xFF
+            buffer[i + 1] = color >> 8
+
+        self.blit_buffer(buffer,x,y,width,height,key=key)
+    
+    @micropython.viper
+    def get_pixel_viper(self, x:int, y:int) -> int:
+        """Alternative to 'get_pixel' for viper use."""
+        sample = self.fbuf.pixel(y,x)
+        if not sample:
+            return 0
+        
+        clr = int(sample)
+        
+        return ((clr & 255) << 8) + (clr >> 8)
+
+    @micropython.viper
+    def draw_image_fancy_trans(self, module, color_list, x:int, y:int, key:int, opacity_percent:int):
+        """Just like 'draw_image_fancy, but it uses 3 clrs for varying opacity."""
+        x, y, = y, x
+        #testlist = []
+        
+        bitmap = module.BITMAP
+        width = int(module.WIDTH)
+        height = int(module.HEIGHT)
+        to_col = x + width - 1
+        to_row = y + height - 1
+
+        bitmap_size = height * width
+        buffer_len = bitmap_size * 2
+        bpp = int(module.BPP)
+        bs_bit = 0
+
+        buffer = bytearray(buffer_len)
+        
+        colors = bytearray(width * 2)
+        color_ptr = ptr16(colors)
+        # process color_list into color array
+        for i in range(width):
+            color_ptr[i] = int(HSV(color_list[i]))
+        
+        
+        for i in range(0, buffer_len, 2):
+            color_index = 0
+            for _ in range(bpp):
+                color_index = (color_index << 1) | (
+                    (int(bitmap[bs_bit >> 3]) >> (7 - (bs_bit & 7))) & 1
+                )
+                bs_bit += 1
+            
+            if color_index == 0:
+                color = key
+            else:
+                opacity = opacity_percent // 2 if color_index == 1 else opacity_percent
+                ix = (i // 2) % width
+                iy = (i // 2) // width
+                fg_clr = color_ptr[ix]
+                color = int(
+                    self.mix_viper(
+                        self.get_pixel_viper(iy + y, ix + x),
+                        ((fg_clr & 255) << 8) + (fg_clr >> 8),
+                        opacity,
+                    ))
+                color = ((color & 255) << 8) + (color >> 8)
+                #testlist.append(ix)
+            #color = palette[color_index]
+
+            buffer[i] = color & 0xFF
+            buffer[i + 1] = color >> 8
+
+        #print(min(testlist), max(testlist))
+        self.blit_buffer(buffer,x,y,width,height,key=key)
+                
+                
+        
+
 if __name__ == "__main__":
     #import portal_main
     DISPLAY = Display()

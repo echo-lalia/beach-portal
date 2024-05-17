@@ -8,6 +8,9 @@ import math
 import framebuf
 from utils import *
 import random
+from images import mountain1, mountain2, mountain3, mountain4, title
+from array import array
+from images import cloud1, cloud2, cloud3
 
 freq(240_000_000)
 
@@ -70,6 +73,12 @@ def set_backlight_from_sensor(t=None):
     
     BLIGHT.duty_u16(SENSOR.read())
     
+def ease_in_sine(x):
+  return 1 - math.cos((x * math.pi) / 2)
+    
+def ease_out_cubic(x):
+    return 1 - ((1 - x) ** 3)
+
     
 def ease_out_circ(x):
     return math.sqrt(1 - ((x - 1) ** 2))
@@ -119,6 +128,24 @@ def advance_clock():
     RTC.init(tuple(rtc_time_list))
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Graphics! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def draw_title():
+    _TITLE_X = const(22)
+    _TITLE_Y = const(50)
+    
+    DISPLAY.fill((0.0, 0.0, 0.0))
+    
+    grad_colors = []
+    for i in range(title.WIDTH):
+        fac = i / title.WIDTH
+        
+        # mix mountain and bg gradient colors
+        grad_colors.append(
+            display.mix_hsv((0.122222, 0.76, 1.0), (0.086, 1.0, 0.8), factor=fac)
+            )
+
+    DISPLAY.draw_image_fancy(title, grad_colors, _TITLE_X, _TITLE_Y, 0, 100)
+    DISPLAY.show()
+
 def draw_sky():
     colors = data_parser.CURRENT_COLORS
     
@@ -251,6 +278,7 @@ def blend_color_fast(rgb1:int, rgb2:int) -> int:
     
     return rgb
 
+
 @micropython.viper
 def _mirror_water(x_start:int,y_start:int,width:int,height:int, buffer, colors):
     #buffer = bytearray(width * height * 2)
@@ -285,6 +313,7 @@ def _mirror_water(x_start:int,y_start:int,width:int,height:int, buffer, colors):
             
             buf_ptr[target_idx] = int(blend_color_fast(buf_ptr[source_idx], colors[y]))
 
+
 def combine_color565(red, green, blue):
     """
     Combine red, green, and blue components into a 16-bit 565 encoding.
@@ -296,6 +325,7 @@ def combine_color565(red, green, blue):
 
     # Pack the color values into a 16-bit integer
     return (red << 11) | (green << 5) | blue
+
 
 @micropython.native
 def hsv_to_rgb(h, s, v):
@@ -325,6 +355,7 @@ def hsv_to_rgb(h, s, v):
         return v, p, q
     # Cannot get here
 
+
 @micropython.native
 def HSV(h,s=0,v=0):
     """Convert HSV vals into 565 value used by display."""
@@ -338,6 +369,7 @@ def HSV(h,s=0,v=0):
     blue = int(blue * 31)
     
     return combine_color565(red, green, blue)
+
 
 def draw_stars():
     _MAX_STARS = const(1000)
@@ -365,10 +397,122 @@ def draw_stars():
         
         DISPLAY.add_pixel(x,y,clr,int(fac))
     
+def avg_color565(color_list):
+    red, green, blue = 0, 0, 0
+    for color in color_list:
+        r,g,b = separate_color565(color)
+        red += r
+        green += g
+        blue += b
+    red //= len(color_list)
+    green //= len(color_list)
+    blue //= len(color_list)
+    return combine_color565(red, green, blue)
+
+def avg_hsv(color_list):
+    output_hsv = (0.0,0.0,0.0)
+    for i, clr in enumerate(color_list):
+        opacity = 1 / (i + 1)
+        output_hsv = display.mix_hsv(output_hsv, clr, opacity)
+    return output_hsv
+    
+def _water_edge_line(y_offsets, y, color, overlay=False, opacity=100):
+    # draw each pixel in line
+    if not overlay and opacity != 100:
+        mix = True
+    else:
+        mix = False
+    
+    if overlay or mix: # regular pixel method expects swapped bytes
+        clr = HSV(color)
+    else:
+        clr = display.HSV(color)
+    
+        
+    
+    
+    for idx, offset in enumerate(y_offsets):
+        if overlay:
+            DISPLAY.overlay_pixel(idx, offset + y, clr, percent=opacity)
+        elif mix:
+            DISPLAY.mix_pixel(idx, offset + y, clr, percent=opacity)
+        else:
+            DISPLAY.pixel(idx, offset + y, clr)
+    
+    
+def draw_water_edge(epoch, y):
+    _EDGE_HEIGHT = const(14)
+    time_offset = epoch % 314
+    
+    # generate list of y offsets for water edge
+    y_offsets = []
+    for i in range(_WIDTH):
+        y_offsets.append(
+            int(
+                (math.sin((i + time_offset) / 60) - (math.pi / 2)) * 3
+                )
+            )
+    
+    # sample water edge to find blend color
+    clrs = []
+    clrs.append(DISPLAY.get_pixel(0, y-1))
+    clrs.append(DISPLAY.get_pixel(_WIDTH // 3, y-1))
+    clrs.append(DISPLAY.get_pixel((_WIDTH * 2) // 3, y-1))
+    clrs.append(DISPLAY.get_pixel(_WIDTH - 1, y-1))
+    water_color = avg_hsv(clrs)
+    
+    # clr, overlay, opacity
+    line_list = []
+    
+    # add water edge ombre colors
+    for i in range(_EDGE_HEIGHT):
+        fac = i / (_EDGE_HEIGHT - 1)
+        clr = display.mix_hsv_in_rgb(
+            water_color,
+            data_parser.CURRENT_COLORS['water_edge_end'],
+            fac)
+        line_list.append((clr, False, 100))
+    # soften the final water edge (anti-alias)
+    line_list.append((data_parser.CURRENT_COLORS['water_edge_end'], False, 33))
+    
+    # add water overlay to sand
+    for i in range(20):
+        fac = i / 19
+        # reverse and make a slightly hard edge
+        fac = ((1.0 - fac) * 0.3) + 0.1
+        line_list.append((data_parser.CURRENT_COLORS['water_sand_overlay'], True, int(fac * 100)))
+    
+    # reverse the last couple of lines to make a harder looking edge
+    line_list.append(line_list[-3])
+    line_list.append(line_list[-2])
+    
+    # draw some leading lines to blend everything together
+    for i in range(0,8):
+        fac = 1 - (i / 7)
+        opacity = int(fac * 100)
+        _water_edge_line(y_offsets, y - i, water_color, opacity=opacity)
+
+    # draw each line by def
+    for idx, line in enumerate(line_list):
+        clr, overlay, opacity = line
+        _water_edge_line(y_offsets, y + idx, clr, overlay, opacity)
+    
+    
+    # draw some random waves atop water
+    # we need random to be changing every second, so we will simply reinit the module with seconds
+    random.seed(time.time())
+    for idx in range(random.randint(1,5)):
+        h_fac = random.random()
+        wave_y = y + _EDGE_HEIGHT - int(h_fac * 32)
+        
+        opacity = int(random.randint(1, 50) * (1 - h_fac))
+        clr = data_parser.CURRENT_COLORS['water_edge_end']
+        _water_edge_line(y_offsets, wave_y, clr, False, opacity)
+    
     
 
 def draw_water():
-    _WATER_MINIMUM = const(16)
+    _WATER_MINIMUM = const(32)
     _WATER_RANGE = const(_BEACH_HEIGHT - _WATER_MINIMUM)
     
     
@@ -393,8 +537,114 @@ def draw_water():
             )
 
     _mirror_water(0, _SKY_HEIGHT, _WIDTH, height, DISPLAY.buf, clrs)
+    
+    draw_water_edge(time.time(), _SKY_HEIGHT + height)
 
 
+def _draw_mountain(x, y_offset, mountain, opacity_start=0.5, opacity_end=1.0):
+    # starting Y
+    mountain_y = _SKY_HEIGHT - mountain.WIDTH
+    # for calculating gradient colors; where is sky mid vs mountain y
+    skymid_offset = mountain_y - _SKY_START_HEIGHT
+    grad_colors = []
+    #opacity = 0.8
+    for i in range(mountain.WIDTH):
+        fac = (i + skymid_offset) / (mountain.WIDTH + skymid_offset)
+        
+        # get more solid near bottom
+        opacity_factor = mix(opacity_start, opacity_end, fac)
+        
+        # mix mountain and bg gradient colors
+        grad_colors.append(
+            display.mix_hsv_in_rgb(
+            display.mix_hsv(data_parser.CURRENT_COLORS['sky_mid'], data_parser.CURRENT_COLORS['sky_bottom'], factor=fac),
+            data_parser.CURRENT_COLORS['mountain'],
+            factor=opacity_factor)
+            )
+
+    DISPLAY.draw_image_fancy(mountain, grad_colors, x, mountain_y + y_offset, 0, 100)
+    
+    
+def draw_mountains(epoch):
+    if _FAST_CLOCK:
+        epoch = epoch // 50
+    else:
+        epoch = epoch // 800
+    
+    mountain_x_offset = ping_pong(epoch, _WIDTH)
+    mountain_x_fac = mountain_x_offset / _WIDTH
+    
+    
+    
+    # mountain3 - back right
+    mountain_y_offset = ping_pong(epoch // 10, 11)
+    mountain_x = int(ease_out_cubic(mountain_x_fac) * mountain3.HEIGHT) + _WIDTH - mountain3.HEIGHT
+    _draw_mountain(mountain_x, mountain_y_offset, mountain3, opacity_start=0.1, opacity_end=0.5)
+    
+    # mountain4 - back left
+    mountain_y_offset = ping_pong(epoch // 12, 10)
+    mountain_x = -int(ease_in_sine(mountain_x_fac) * mountain4.HEIGHT)
+    _draw_mountain(mountain_x, mountain_y_offset, mountain4, opacity_start=0.15, opacity_end=0.6)
+    
+    # mountain1 - front right
+    mountain_y_offset = ping_pong(epoch // 13, 13)
+    mountain_x = int(ease_hold_center_circ(mountain_x_fac) * _WIDTH)
+    _draw_mountain(mountain_x, mountain_y_offset, mountain1, opacity_start=0.5, opacity_end=0.8)
+    
+    # mountain2 - front left
+    mountain_y_offset = ping_pong(epoch // 11, 12)
+    mountain_x = int(ease_hold_center_circ(mountain_x_fac) * _WIDTH) - mountain2.HEIGHT
+    _draw_mountain(mountain_x, mountain_y_offset, mountain2, opacity_start=0.75, opacity_end=0.95)
+
+def _make_color_list(start_clr, end_clr, count):
+    grad_colors = []
+    for i in range(count):
+        fac = i / (count - 1)
+        
+        # mix mountain and bg gradient colors
+        grad_colors.append(
+            display.mix_hsv(start_clr, end_clr, factor=fac)
+            )
+    return grad_colors
+
+def draw_clouds(epoch):
+    _MAX_CLOUDS = const(60)
+    coverage = data_parser.WEATHER['clouds']['all'] / 100
+    num_clouds = int(_MAX_CLOUDS * ease_in_sine(coverage))
+    
+    # re-init random with current half hour
+    random.seed(epoch // 1800)
+    
+    for i in range(num_clouds):
+        cloud = random.choice((cloud1, cloud2, cloud3))
+        
+        x = random.randint(0,_WIDTH) - (cloud.HEIGHT // 2)
+        y = int(ease_in_sine(random.random()) * (_SKY_HEIGHT)) - cloud.WIDTH
+        
+        opacity = int(50 * coverage) + random.randint(1,50)
+        
+        clrs = _make_color_list(data_parser.CURRENT_COLORS['cloud_top'], data_parser.CURRENT_COLORS['cloud_bottom'], cloud.WIDTH)
+        
+        DISPLAY.draw_image_fancy_trans(cloud, clrs, x, y, 0, opacity)
+        
+def _draw_one_wind_line(x, y, length, y_speed, opacity):
+    bg_clr = DISPLAY.color_pick(x,y)
+    for i in range(length):
+        ix = x - (length // 2) + i
+        iy = y + int(y_speed * i)
+        DISPLAY.mix_pixel(ix, iy, HSV(bg_clr), opacity)
+        
+    
+    
+def draw_wind():
+    random.seed()
+    y_speed = random.uniform(-0.25, 0.25)
+    
+    for i in range(200):
+        x = random.randint(0,_WIDTH)
+        y = random.randint(0,_HEIGHT)
+        _draw_one_wind_line(x, y, 80, y_speed, 50)
+        
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Main! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def main_loop():
     
@@ -408,7 +658,7 @@ def main_loop():
     # remember how long since we last updated
     last_internet_update = time.time()
     
-    counter = 12
+    counter = 2
     while True:
         # init random with current time in hours.
         # This lets the contents of the loop be different every hour, without changing every single frame
@@ -435,24 +685,29 @@ def main_loop():
         draw_sky()
         draw_stars()
         draw_sun()
+        draw_clouds(epoch)
         draw_beach()
+        draw_mountains(epoch)
         draw_water()
+        draw_wind()
         
         # add overlay to display
-        DISPLAY.overlay_color(HSV(data_parser.CURRENT_OVERLAY), 100)
+        DISPLAY.overlay_color(HSV(data_parser.CURRENT_OVERLAY), 100, HSV(data_parser.CURRENT_COLORS['fog']), data_parser.FOG_OPACITY)
         
         DISPLAY.show()
         
-            
+        
         localtime = time.localtime(epoch)
         print(f"Time: {(localtime[3]-7)%24}:{localtime[4]}")
         print(f"Altitude: {data_parser.SUN_DATA['sun_position']['altitude']}, Azimuth: {data_parser.SUN_DATA['sun_position']['azimuth']}")
         counter += 1
         if counter > 1000:
             counter = 0
-    
+
+
 # for testing, catch exceptions to deinit timer/display
 try:
+    draw_title()
     main_loop()
 except KeyboardInterrupt as e:
     print(e)

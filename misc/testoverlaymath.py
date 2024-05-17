@@ -4,7 +4,8 @@ from utils import *
 # rgb565
 color1 = 33897
 color2 = 62975
-
+color3 = 12964
+color4 = 38392
 
 def overlay_val_float(a,b):
     if a < 0.5:
@@ -28,8 +29,6 @@ def overlay_floats(clr1, clr2):
     green *= 63
     blue *= 31
     
-    print('floats:', red, green, blue)
-    
     return combine_color565(
         int(red),
         int(green),
@@ -38,12 +37,18 @@ def overlay_floats(clr1, clr2):
 
 def overlay_val_int(a,b,divisor):
     if a < (divisor // 2):
-        return (a * b) // divisor
+        return (2 * a * b) // divisor
     else:
-        return - divisor + (2*b) + (2*a) - ((2*a*b) // divisor)
-        # -31 + (2*b) + (2*a) - ((2*a*b)/31)
-        #return divisor - ((divisor - a) * (divisor - b) // divisor)
-    
+        # invert colors
+        a = divisor - a
+        b = divisor - b
+        # multiply
+        output = (2 * a * b) // divisor
+        #uninvert output
+        output = divisor - output
+        return output
+
+
 def overlay_ints(clr1, clr2):
     r1,g1,b1 = separate_color565(clr1)
     r2,g2,b2 = separate_color565(clr2)
@@ -52,75 +57,95 @@ def overlay_ints(clr1, clr2):
     green = overlay_val_int(g1, g2, 63)
     blue = overlay_val_int(b1, b2, 31)
     
-    print('ints:', red, green, blue)
-    
     return combine_color565(
         (red),
         (green),
         (blue))
 
 
-def overlay_ints_higher(clr1, clr2):
-    _DIVISOR = const(1024)
-    r1,g1,b1 = separate_color565(clr1)
-    r2,g2,b2 = separate_color565(clr2)
-    
-    # multiply integers to get higher accuracy output
-    red = overlay_val_int(r1 * _DIVISOR, r2 * _DIVISOR, 31 * _DIVISOR) // _DIVISOR
-    green = overlay_val_int(g1 * _DIVISOR, g2 * _DIVISOR, 63 * _DIVISOR) // _DIVISOR
-    blue = overlay_val_int(b1 * _DIVISOR, b2 * _DIVISOR, 31 * _DIVISOR) // _DIVISOR
-    
-    print('bigints:', red, green, blue)
-    
-    return combine_color565(
-        (red),
-        (green),
-        (blue))
-
 @micropython.viper
-def overlay_vals_viper(a:int,b:int,divisor:int) -> int:
-    if a < (divisor // 2):
-        return (a * b) // divisor
+def overlay_viper(clr1:int, clr2:int) -> int:
+    # separate rgb565
+    r1 = (clr1 >> 11) & 0x1F
+    g1 = (clr1 >> 5) & 0x3F
+    b1 = clr1 & 0x1F
+    
+    r2 = (clr2 >> 11) & 0x1F
+    g2 = (clr2 >> 5) & 0x3F
+    b2 = clr2 & 0x1F
+    
+    # preform overlay math on each component pair
+    # this would be better to read if it were separated to another function,
+    # however it's faster if it's all inline
+    
+    divisor = 31
+    if r1 < (divisor // 2):
+        red = (2 * r1 * r2) // divisor
     else:
-        return (divisor - ((divisor - a) * (divisor - b)) // divisor)
-
-@micropython.viper
-def overlay_ints_viper(clr1:int, clr2:int) -> int:
-    # separate 565 color
-    r1 = ((clr1 >> 11) & 0x1F)
-    g1 = ((clr1 >> 5) & 0x3F)
-    b1 = (clr1 & 0x1F)
+        # invert colors
+        r1 = divisor - r1
+        r2 = divisor - r2
+        # multiply
+        output = (2 * r1 * r2) // divisor
+        #uninvert output
+        output = divisor - output
+        red = output
     
-    r2 = ((clr2 >> 11) & 0x1F)
-    g2 = ((clr2 >> 5) & 0x3F)
-    b2 = (clr2 & 0x1F)
-  
-    # preform overlay math on red/green/blue channels
-    # vals are multiplied by 8 for higher accuracy.
-    y = 31
-    if r1 < (15):
-        red = (r1 * r2) // y
+    divisor = 63
+    if g1 < (divisor // 2):
+        green = (2 * g1 * g2) // divisor
     else:
-        red = ((r1*y) + (r2*y) - (r1*r2)) // y
+        # invert colors
+        g1 = divisor - g1
+        g2 = divisor - g2
+        # multiply
+        output = (2 * g1 * g2) // divisor
+        #uninvert output
+        output = divisor - output
+        green = output
     
-    y = 63
-    if g1 < (31):
-        green = (g1 * g2) // y
+    divisor = 31
+    if b1 < (divisor // 2):
+        blue = (2 * b1 * b2) // divisor
     else:
-        green = ((g1*y) + (g2*y) - (g1*g2)) // y
-        
-    y = 31
-    if b1 < (15):
-        blue = (b1 * b2) // y
-    else:
-        blue = ((b1*y) + (b2*y) - (b1*b2)) // y
+        # invert colors
+        b1 = divisor - b1
+        b2 = divisor - b2
+        # multiply
+        output = (2 * b1 * b2) // divisor
+        #uninvert output
+        output = divisor - output
+        blue = output
     
-    
-    print("viper:",red,green,blue)
-    
+    # combine color565
     return (red << 11) | (green << 5) | blue
+    
+print(
+f"""
+-----------------------------------------------
+color1 = {color1} # {separate_color565(color1)}
+color2 = {color2} # {separate_color565(color2)}
+color3 = {color3} # {separate_color565(color3)}
+color4 = {color4} # {separate_color565(color4)}
+-----------------------------------------------
 
-print(overlay_floats(color1, color2))
-print(overlay_ints(color1, color2))
-print(overlay_ints_higher(color1, color2))
-print(overlay_ints_viper(color1, color2))
+overlay_floats(color1, color2):
+{overlay_floats(color1, color2)} # {separate_color565(overlay_floats(color1, color2))}
+
+overlay_ints(color1, color2):
+{overlay_ints(color1, color2)} # {separate_color565(overlay_ints(color1, color2))}
+
+-----------------------------------------------
+
+overlay_floats(color3, color4):
+{overlay_floats(color3, color4)} # {separate_color565(overlay_floats(color3, color4))}
+
+overlay_ints(color3, color4):
+{overlay_ints(color3, color4)} # {separate_color565(overlay_ints(color3, color4))}
+
+overlay_viper(color3, color4):
+{overlay_viper(color3, color4)} # {separate_color565(overlay_viper(color3, color4))}
+
+-----------------------------------------------
+"""
+)

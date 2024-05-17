@@ -28,7 +28,7 @@ class LightSensor:
 
 if __name__ == "__main__":
     
-    blight_brightness = 1_000
+    blight_brightness = 8000
     
     import time
     
