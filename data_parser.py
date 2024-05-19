@@ -38,11 +38,7 @@ SUN_DATA = {}
 TIDE_LEVEL = 1.5 # random/arbitrary val to start
 
 WEATHER = { # using default values to reduce possible errors
-    'weather': [{'id': 803, 'icon': '04d', 'main': 'Clouds', 'description': 'broken clouds'}],
-    'clouds': {'all': 55},
-    'visibility': 10000,
-    'wind': {'speed': 8.0, 'deg': 200},
-    'main': {'feels_like': 15.00, 'pressure': 1009, 'temp_max': 17.00, 'temp': 16.0, 'temp_min': 14.00, 'humidity': 60, 'sea_level': 1000, 'grnd_level': 1000}
+    'precipitation': 0.0, 'rain': 0.0, 'wind_speed': 14.0, 'snow': 0.0, 'temperature': 10.0, 'visibility': 20000.0, 'cloud_cover': 10, 'precipitation_probability': 10
     }
 
 # dict stores color values as 4 tuples of hsv(3 tuple) values.
@@ -339,12 +335,12 @@ def set_overlay_colors():
     
     # add temperature data to overlay color
     hot_factor = ease_in_sine(
-        get_factor(24, WEATHER['main']['feels_like'], 40)
+        get_factor(24, WEATHER['temperature'], 40)
         )
     CURRENT_OVERLAY = display.mix_hsv_in_rgb(CURRENT_OVERLAY, (0.03, 0.95, 0.63), factor=hot_factor)
     
     cold_factor = ease_in_sine(
-        1.0 - get_factor(-30, WEATHER['main']['feels_like'], 0)
+        1.0 - get_factor(-30, WEATHER['temperature'], 0)
         )
     CURRENT_OVERLAY = display.mix_hsv_in_rgb(CURRENT_OVERLAY, (0.6, 0.55, 0.74), factor=cold_factor)
     
@@ -425,11 +421,25 @@ def set_colors_by_sun(date=None ):
     #print(last_midnight, sunrise, noon, sunset, next_midnight)
     #print(f"fac: {fac}, clr_indices: {clr_indices}")
 
+# def get_weather_data():
+#     global WEATHER
+#     lat, lon = CONFIG['location_coords']
+#     key = CONFIG['weather_key']
+#     url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={key}&units=metric"
+#     
+#     response = requests.get(url)
+#     
+#     if response.status_code != 200:
+#         log(f"get_weather_data failed with this response: {response.status_code}")
+#         return False
+#     
+#     WEATHER = json.loads(response.content)
+
+
 def get_weather_data():
     global WEATHER
     lat, lon = CONFIG['location_coords']
-    key = CONFIG['weather_key']
-    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={key}&units=metric"
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=apparent_temperature,precipitation,snowfall,cloud_cover,wind_speed_10m&hourly=precipitation_probability,visibility&timeformat=unixtime&forecast_days=1"
     
     response = requests.get(url)
     
@@ -437,7 +447,34 @@ def get_weather_data():
         log(f"get_weather_data failed with this response: {response.status_code}")
         return False
     
-    WEATHER = json.loads(response.content)
+    content = json.loads(response.content)
+    current = content.get('current', {})
+    hourly = content.get('hourly', {})
+    
+    WEATHER = {
+        'temperature': current.get('apparent_temperature', 10),
+        'cloud_cover': current.get('cloud_cover', 0),
+        'wind_speed': current.get('wind_speed_10m', 0),
+        'precipitation': current.get('precipitation', 0),
+        'snow': current.get('snowfall', 0),
+        }
+    # find total rain amount by subtracting snowfall from precipitation
+    # i'm doing this because I don't want to deal with other types of precipitation.
+    WEATHER['rain'] = WEATHER['precipitation'] - WEATHER['snow']
+    
+    # now we need to process hourly weather into current weather
+    # we will do this by comparing the given 'current time' to the hourly times to find our index.
+    best_index = 0
+    best_error = 31536000
+    time_now = current['time']
+    for index, timestamp in enumerate(hourly['time']):
+        error = abs(time_now - timestamp)
+        if error < best_error:
+            best_error = error
+            best_index = index
+    
+    WEATHER['visibility'] = hourly['visibility'][best_index]
+    WEATHER['precipitation_probability'] = hourly['precipitation_probability'][best_index]
     
 
 def update_data_calculate(date=None, full=True):
@@ -467,9 +504,9 @@ if __name__ == "__main__":
     #get_tide_data()
     #print(TIDE_LEVEL)
     #get_tide_data()
-    #get_weather_data()
+    get_weather_data()
     
-    update_data_internet()
+    #update_data_internet()
     print(
 f"""
 

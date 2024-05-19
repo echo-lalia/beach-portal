@@ -879,7 +879,7 @@ class Display:
         """
         self.fbuf.blit(framebuf.FrameBuffer(buffer, width, height, framebuf.RGB565), x, y, key, palette)
 
-    def bitmap_icons(self, bitmap_module, bitmap, color, x, y, invert_colors=False):
+    def bitmap_icons(self, bitmap_module, bitmap, color, x, y, invert_colors=False, index=0):
         """
         Draw a 2 color bitmap as a transparent icon on display,
         at the specified column and row, using given color and memoryview object.
@@ -907,7 +907,7 @@ class Display:
         bitmap_size = height * width
         buffer_len = bitmap_size * 2
         bpp = bitmap_module.BPP
-        bs_bit = 0
+        bs_bit = bpp * bitmap_size * index
         needs_swap = True
         buffer = bytearray(buffer_len)
         

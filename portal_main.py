@@ -10,7 +10,7 @@ from utils import *
 import random
 from images import mountain1, mountain2, mountain3, mountain4, title
 from array import array
-from images import cloud1, cloud2, cloud3
+from images import cloud1, cloud2, cloud3, beachdebris
 
 freq(240_000_000)
 
@@ -60,6 +60,8 @@ HEIGHT = DISPLAY.height
 
 # create backlight timer
 BL_TIMER = Timer(3)
+
+WATER_END = _SKY_HEIGHT + 32
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ function defs ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -515,6 +517,8 @@ def draw_water():
     _WATER_MINIMUM = const(32)
     _WATER_RANGE = const(_BEACH_HEIGHT - _WATER_MINIMUM)
     
+    global WATER_END
+    
     
     clr1 = data_parser.CURRENT_COLORS['water_top']
     clr2 = data_parser.CURRENT_COLORS['water']
@@ -537,6 +541,8 @@ def draw_water():
             )
 
     _mirror_water(0, _SKY_HEIGHT, _WIDTH, height, DISPLAY.buf, clrs)
+    
+    WATER_END = _SKY_HEIGHT + height + _EDGE_HEIGHT
     
     draw_water_edge(time.time(), _SKY_HEIGHT + height)
 
@@ -609,7 +615,7 @@ def _make_color_list(start_clr, end_clr, count):
 
 def draw_clouds(epoch):
     _MAX_CLOUDS = const(60)
-    coverage = data_parser.WEATHER['clouds']['all'] / 100
+    coverage = data_parser.WEATHER['cloud_cover'] / 100
     num_clouds = int(_MAX_CLOUDS * ease_in_sine(coverage))
     
     # re-init random with current half hour
@@ -626,25 +632,132 @@ def draw_clouds(epoch):
         clrs = _make_color_list(data_parser.CURRENT_COLORS['cloud_top'], data_parser.CURRENT_COLORS['cloud_bottom'], cloud.WIDTH)
         
         DISPLAY.draw_image_fancy_trans(cloud, clrs, x, y, 0, opacity)
+
+
+def _desaturate_hsv(hsv, mult = 0.5):
+    h,s,v = hsv
+    s *= mult
+    return h,s,v
+
+def multiply_tuple(t1, t2, maximum=1.0):
+    t1 = list(t1)
+    for i, mult in enumerate(t2):
+        t1[i] *= mult
+        if t1[i] > maximum:
+            t1[i] = maximum
+    return tuple(t1)
         
 def _draw_one_wind_line(x, y, length, y_speed, opacity):
     bg_clr = DISPLAY.color_pick(x,y)
+    bg_clr = multiply_tuple(bg_clr, (1.0, 0.5, random.uniform(0.8,1.2)))
     for i in range(length):
         ix = x - (length // 2) + i
         iy = y + int(y_speed * i)
         DISPLAY.mix_pixel(ix, iy, HSV(bg_clr), opacity)
         
     
-    
 def draw_wind():
+    _MAX_WIND = const(60)
+    _MIN_WIND = const(10)
+    
+    wind = data_parser.WEATHER['wind_speed']
+    if wind < _MIN_WIND:
+        return
+
+
+    fac = get_factor(_MIN_WIND, wind, _MAX_WIND)
+
+    # reseed for random vals on every frame
     random.seed()
     y_speed = random.uniform(-0.25, 0.25)
-    
-    for i in range(200):
+
+    num_lines = int(ease_in_sine(fac) * 400)
+    line_len = int(fac * 70) + 10
+    opacity = int(fac * 50) + 30
+    for i in range(num_lines):
         x = random.randint(0,_WIDTH)
         y = random.randint(0,_HEIGHT)
-        _draw_one_wind_line(x, y, 80, y_speed, 50)
+        _draw_one_wind_line(x, y, line_len, y_speed, opacity)
+
+
+def _draw_one_rain_line(x, y, length, x_speed, opacity):
+    clr = (random.uniform(0.6, 0.663), random.uniform(0.3,1.0), random.uniform(0.33, 0.66))
+    
+    for i in range(length):
+        iy = y - (length // 2) + i
+        ix = x + int(x_speed * i)
         
+        DISPLAY.overlay_pixel(ix, iy, HSV(clr), opacity)
+        #DISPLAY.mix_pixel(ix, iy, HSV(clr), opacity)
+        
+
+def draw_rain():
+    _MAX_RAIN = const(30)
+    _MIN_RAIN = const(0)
+    
+    rain = data_parser.WEATHER['rain']
+    
+    fac = get_factor(_MIN_RAIN, rain, _MAX_RAIN)
+
+    # reseed for random vals on every frame
+    random.seed()
+    x_speed = random.uniform(-0.25, 0.25)
+
+    num_lines = int(ease_in_sine(fac) * 400)
+    line_len = int(fac * 80) + 10
+    opacity = int(fac * 40) + 10
+    for i in range(num_lines):
+        x = random.randint(0,_WIDTH)
+        y = random.randint(0,_HEIGHT)
+        _draw_one_rain_line(x, y, line_len, x_speed, opacity)
+        
+        
+def draw_sand(epoch):
+    random.seed(epoch // 10800)
+    _NUM_SAND_PARTICLES = const(100)
+        
+    for i in range(2000):
+        x = random.randint(0,_WIDTH)
+        y = random.randint(_SKY_HEIGHT, _HEIGHT)
+        clr = (random.uniform(0.166, 0.666), random.uniform(0.04, 0.5), random.uniform(0.4, 0.6))
+        DISPLAY.overlay_pixel(x, y, HSV(clr), 30)
+    
+
+def draw_beach_debris(epoch):
+    
+    # if water goes all the way (or past) the bottom of screen, no debris should be drawn
+    if WATER_END >= _HEIGHT:
+        return
+    
+    random.seed(epoch // 10800)
+    
+    num_debris = random.randint(3,10)
+    for i in range(num_debris):
+        x = random.randint(0,_WIDTH)
+        y = random.randint(WATER_END, _HEIGHT)
+        
+        index = random.randint(0,15)
+        
+        bg_clr = DISPLAY.get_pixel(x, y)
+        hue = random.uniform(0.04, 0.119)
+        sat = random.uniform(0.0, 0.5)
+        #val = clamp(bg_clr[2] + random.uniform(-0.5, 0.2))
+        val = random.uniform(0.0, 0.6)
+#         clr = display.mix_hsv_in_rgb(
+#             bg_clr,
+#             (hue, sat, val),
+#             0.3,
+#             )
+        clr = DISPLAY.overlay_viper(
+            HSV(bg_clr),
+            HSV((hue, sat, val)),
+            50
+            )
+        
+        DISPLAY.bitmap_icons(
+            beachdebris, beachdebris.BITMAP, clr, x - 8, y, index=index,
+            )
+    
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Main! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def main_loop():
     
@@ -658,7 +771,7 @@ def main_loop():
     # remember how long since we last updated
     last_internet_update = time.time()
     
-    counter = 2
+    counter = 0
     while True:
         # init random with current time in hours.
         # This lets the contents of the loop be different every hour, without changing every single frame
@@ -687,9 +800,13 @@ def main_loop():
         draw_sun()
         draw_clouds(epoch)
         draw_beach()
+        draw_sand(epoch)
         draw_mountains(epoch)
         draw_water()
         draw_wind()
+        draw_rain()
+        
+        draw_beach_debris(epoch)
         
         # add overlay to display
         DISPLAY.overlay_color(HSV(data_parser.CURRENT_OVERLAY), 100, HSV(data_parser.CURRENT_COLORS['fog']), data_parser.FOG_OPACITY)
