@@ -1,7 +1,7 @@
 from machine import ADC
 
 
-_HIST_LEN = const(200)
+_HIST_LEN = const(400)
 # _SENSOR_MIN = const(0)
 # #_SENSOR_MAX = const(65535)
 # _SENSOR_MAX = const(1000) # temporary val; must be changed as hardware changes
@@ -12,9 +12,10 @@ _HIST_LEN = const(200)
 # #_SENSOR_POLYNOMIAL_DEF = [4.76817472e-06, -0.01342395,  19.13961, -1742]
 # # polynomial order needs to be reversed for the below function
 # #_SENSOR_POLYNOMIAL_DEF = list(reversed(_SENSOR_POLYNOMIAL_DEF))
-_MIN_READING = const(300)
+_DEFAULT_MIN_READING = const(500)
+_ABSOLUTE_MIN_READING = const(200)
 _MAX_READING = const(3000)
-_SENSOR_RANGE = const(_MIN_READING - _MAX_READING)
+#_SENSOR_RANGE = const(_MIN_READING - _MAX_READING)
 
 class LightSensor:
     
@@ -22,39 +23,25 @@ class LightSensor:
         
         self.adc = ADC(17)
         self.hist = []
+        self.min_reading = _DEFAULT_MIN_READING
         
-    @staticmethod
-    def transform_input(x):
+        
+    def transform_input(self, x):
         if x >= _MAX_READING:
             return 65535
         
-        x -= _MIN_READING
+        minimum = self.min_reading
+        
+        x -= minimum
         if x < 0:
             x = 0
         
-        x /= _MAX_READING
+        sensor_range = _MAX_READING - minimum
+        x /= sensor_range
         
         return int(x * 65535)
-# 
-#     @staticmethod
-#     def transform_input(x):
-#         A, B, C, D = _SENSOR_POLYNOMIAL_DEF
-#         
-#         return ((x**3) * A) + ((x**2) * B) + (x * C) + D
     
-#     @staticmethod
-#     def transform_input(input_value):
-#         """
-#         Transform an input number using polynomial coefficients.
-#         """
-#         # TODO: THIS DOESNT WORK
-#         # Evaluate the polynomial function using the coefficients
-#         transformed_value = 0
-#         
-#         for i, coef in enumerate(_SENSOR_POLYNOMIAL_DEF):
-#             transformed_value += coef * (input_value ** i)
-#         
-#         return transformed_value
+    
     
     def read(self):
         
@@ -63,13 +50,21 @@ class LightSensor:
         
         if len(self.hist) > _HIST_LEN:
             self.hist.pop(0)
-            
+
         avg_reading = sum(self.hist) / len(self.hist)
-        #print(avg_reading)
         
-        if avg_reading < _MIN_READING:
+        # remember min reading
+        if avg_reading < self.min_reading\
+           and len(self.hist) == _HIST_LEN:
+            self.min_reading = max(avg_reading, _ABSOLUTE_MIN_READING)
+            print('min_reading:', self.min_reading)
+            
+        if avg_reading < self.min_reading + 5:
             return 0
         if avg_reading > _MAX_READING:
+            # reset min_reading to default value if its bright
+            # (so that it will be re-calibrated next time it's dark)
+            self.min_reading = _DEFAULT_MIN_READING
             return 65535
         
         return self.transform_input(avg_reading)
@@ -95,8 +90,8 @@ class LightSensor:
         minimum = sum(working_list[:_MOTION_SAMPLES]) / _MOTION_SAMPLES
         maximum = sum(working_list[-_MOTION_SAMPLES : len(working_list)]) / _MOTION_SAMPLES
         
-        
-        return abs((maximum - minimum) / _SENSOR_RANGE)
+        sensor_range = _MAX_READING - self.min_reading
+        return abs((maximum - minimum) / sensor_range)
 
 
 

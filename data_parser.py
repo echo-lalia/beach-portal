@@ -213,13 +213,13 @@ def get_tide_data():
     
 
 
-def set_time():
+def set_time(refresh_timezone=False):
     try:
         ntptime.settime()
     except Exception as e:
         log(f"Couldn't sync NTP time: {e}")
     try:
-        get_timezone_data()
+        get_timezone_data(refresh=refresh_timezone)
     except Exception as e:
         log(f"Couldn't get timezone data: {e}")
 
@@ -268,15 +268,7 @@ def find_sun_data(date=None, full=True):
         SUN_DATA['sun_times'] = suncalc.get_times(lat=lat, lng=lng, times=_SUNSET_TIMES, date=epoch)
         SUN_DATA['moon_position'] = suncalc.get_moon_position(lat=lat, lng=lng, degrees=True, date=epoch)
         SUN_DATA['moon_illumination'] = suncalc.get_moon_illumination(date=epoch)
-#     
-#     SUN_DATA = {
-#         'sun_position':position,
-#         'sun_times': times,
-#     #    'sun_tommorow': tommorow,
-#     #    'sun_yesterday': yesterday,
-#         'moon_position': moon_position,
-#         'moon_illumination': moon_illumination,
-#         }
+
 
 
 def get_factor(minimum, current, maximum) -> float:
@@ -486,10 +478,12 @@ def update_data_calculate(date=None, full=True):
     set_overlay_colors()
     
     
-def update_data_internet():
+def update_data_internet(refresh_time=True, refresh_timezone=False):
     connect_to_internet()
     
-    set_time()
+    if refresh_time:
+        set_time(refresh_timezone=refresh_timezone)
+    
     get_tide_data()
     get_weather_data()
     

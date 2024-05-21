@@ -18,8 +18,8 @@ freq(240_000_000)
 
 # debug tools:
 _FORCE_MAX_LIGHT_ = False
-_FAST_CLOCK = True
-_SUPRESS_TIME_SYNC = True
+_FAST_CLOCK = False
+_SUPRESS_TIME_SYNC = False
 
 
 _ADVANCE_SECONDS = const(60 * 60)
@@ -361,20 +361,6 @@ def draw_moon(sun_position):
     # blit our drawn moon image
     DISPLAY.blit_framebuf(fbuf, position - _MOON_RADIUS, moon_x - _MOON_RADIUS, key=0)
     
-#     # dont draw moon if it's a 'new moon'
-#     if fraction > 0.05:
-#         # sample color behind moon (for shadow)
-#         bg_clr = DISPLAY.color_pick(moon_x, position)
-#         
-#         DISPLAY.glow_circle(moon_x, position, 18,24, (0.5, 0.5, 0.5))
-#         
-#         # if moon is not full, draw a shadow on it:
-#         if fraction < 0.95:
-#             
-#             DISPLAY.ellipse(
-#                 moon_x - int(36 * fraction),
-#                 position, 20,20,
-#                 bg_clr, True)
 
 
 @micropython.viper
@@ -1003,7 +989,7 @@ def draw_seasonal(epoch):
 
 def handle_boats(boat_list):
     random.seed()
-    if random.random() > 0.9:
+    if random.random() > 0.98:
         boat_list.append(Boat())
     
     for boat in boat_list:
@@ -1018,7 +1004,7 @@ def handle_boats(boat_list):
         else:
             boat_list.remove(boat)
     print(boat_list)
-    print(WATER_END)
+    #print(WATER_END)
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ BOATS: ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1039,7 +1025,8 @@ class Boat:
         
         
     def move(self):
-        self.x += self.direction
+        speed = int(get_factor(_SKY_HEIGHT, self.y, _HEIGHT) * 3) + 1
+        self.x += self.direction * speed
         if (self.direction == 1 and self.x > _WIDTH + _BOAT_OUTSIDE_OFFSET)\
            or (self.direction == -1 and self.x < -_BOAT_OUTSIDE_OFFSET):
             self.alive = False
@@ -1157,18 +1144,20 @@ class Boat:
 def main_loop():
     
     # init timer to update backlight regularly
-    BL_TIMER.init(period=20, mode=Timer.PERIODIC, callback=set_backlight_from_sensor)
+    BL_TIMER.init(period=50, mode=Timer.PERIODIC, callback=set_backlight_from_sensor)
     
     # collect data to start
     if not _SUPRESS_TIME_SYNC:
-        data_parser.update_data_internet()
+        data_parser.update_data_internet(refresh_time=True, refresh_timezone=True)
     data_parser.update_data_calculate()
     # remember how long since we last updated
     last_internet_update = time.time()
     
     boat_list = [Boat()]
     
-    counter = 12
+    counter = 0
+    
+    internet_fetch_counter = 1
     while True:
         # main loop:
         # for stability reasons, items in this loop contains many try/except and log statements.
@@ -1190,14 +1179,18 @@ def main_loop():
         
         # when it has been more than _RELOAD_DATA_SECONDS, reload our data
         if time.time() - last_internet_update >= _RELOAD_DATA_SECONDS and not _SUPRESS_TIME_SYNC:
+            
+            refresh_time = True if internet_fetch_counter % 4 == 0 else False
+            
             try:
-                data_parser.update_data_internet()
+                data_parser.update_data_internet(refresh_time=refresh_time, refresh_timezone=refresh_time)
             except Exception as e:
                 log(f"data_parser.update_data_internet failed with this error: {e}")
-
+            
+            internet_fetch_counter = (internet_fetch_counter + 1) % 1000
             last_internet_update = time.time()
         
-        
+        time.sleep_ms(5)
         
         # update calculated data every cycle
         try:
@@ -1206,6 +1199,7 @@ def main_loop():
         except Exception as e:
             log(f"data_parser.update_data_calculate failed with this error: {e}")
         
+        time.sleep_ms(5)
         
         # graphics:
         try:
@@ -1271,8 +1265,13 @@ def main_loop():
             log(f"draw_seasonal failed with this error: {e}")
         
         
+        try:
+            handle_boats(boat_list)
+        except Exception as e:
+            log(f"handle_boats failed with this error: {e}")
         
-        handle_boats(boat_list)
+        
+        time.sleep_ms(5)
         
         
         # add overlay to display
@@ -1281,10 +1280,17 @@ def main_loop():
         except Exception as e:
             log(f"DISPLAY.overlay_color failed with this error: {e}")
         
+        
+        time.sleep_ms(5)
+        
+        
         try:
             DISPLAY.show()
         except Exception as e:
             log(f"DISPLAY.show failed with this error: {e}")
+        
+        
+        time.sleep_ms(5)
         
         
         localtime = time.localtime(epoch)
@@ -1292,9 +1298,12 @@ def main_loop():
         print(f"Altitude: {data_parser.SUN_DATA['sun_position']['altitude']}, Azimuth: {data_parser.SUN_DATA['sun_position']['azimuth']}")
         
         
+        gc.collect()
         counter += 1
         if counter > 1000:
             counter = 0
+            
+        time.sleep_ms(10)
 
 
 # for testing, catch exceptions to deinit timer/display
@@ -1305,9 +1314,9 @@ except KeyboardInterrupt as e:
     print(e)
     BL_TIMER.deinit()
     DISPLAY.tft.deinit()
-# except Exception as e:
-#     log(f"Error in main loop: {e}")
-#     BL_TIMER.deinit()
-#     DISPLAY.tft.deinit()
-#     time.sleep(30)
-#     machine.reset()
+except Exception as e:
+    log(f"Error in main loop: {e}")
+    BL_TIMER.deinit()
+    DISPLAY.tft.deinit()
+    time.sleep(30)
+    machine.reset()

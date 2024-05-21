@@ -69,7 +69,7 @@ try:
 except:
     from suncalc.mpy_decimal import DecimalNumber as decimal
 
-decimal.set_scale(9)
+#decimal.set_scale(9)
 
 #from datetime import datetime
 import time
