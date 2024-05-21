@@ -339,6 +339,11 @@ def set_overlay_colors():
         )
     CURRENT_OVERLAY = display.mix_hsv_in_rgb(CURRENT_OVERLAY, (0.6, 0.55, 0.74), factor=cold_factor)
     
+    # add rain data to overlay
+    rain_factor = get_factor(0, WEATHER['precipitation'], 20)
+    #TESTING
+    rain_factor = 0.5
+    CURRENT_OVERLAY = display.mix_hsv_in_rgb(CURRENT_OVERLAY, (0.891, 0.50, 0.44), factor=rain_factor)
     
     # also set fog opacity based on weather
     visibility_fac = ease_in_circ(clamp(1 - (WEATHER['visibility'] / 10000)))

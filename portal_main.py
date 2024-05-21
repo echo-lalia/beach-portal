@@ -20,7 +20,7 @@ freq(240_000_000)
 # debug tools:
 _FORCE_MAX_LIGHT_ = False
 _FAST_CLOCK = False
-_SUPRESS_TIME_SYNC = False
+_SUPRESS_TIME_SYNC = True
 
 
 _ADVANCE_SECONDS = const(60 * 60)
@@ -842,22 +842,66 @@ def draw_wind():
         _draw_one_wind_line(x, y, line_len, y_speed, opacity)
 
 
-def _draw_one_rain_line(x, y, length, x_speed, opacity):
-    clr = (random.uniform(0.6, 0.663), random.uniform(0.3,1.0), random.uniform(0.33, 0.66))
+def _draw_one_rain_line(x, y, length, x_speed, opacity, overlay=True, clr=None):
+    if clr is None:
+        clr = (random.uniform(0.6, 0.663), random.uniform(0.3,1.0), random.uniform(0.33, 0.66))
     
     for i in range(length):
         iy = y - (length // 2) + i
         ix = x + int(x_speed * i)
         
-        DISPLAY.overlay_pixel(ix, iy, HSV(clr), opacity)
-        #DISPLAY.mix_pixel(ix, iy, HSV(clr), opacity)
+        if overlay:
+            DISPLAY.overlay_pixel(ix, iy, HSV(clr), opacity)
+        else:
+            DISPLAY.mix_pixel(ix, iy, HSV(clr), opacity)
+
+
+def draw_snow():
+    _MAX_SNOW = const(10) # just guessing at a value
+    _MIN_SNOW = const(0)
+    
+    snow = data_parser.WEATHER['snow']
+    
+    if snow < 0.3:
+        return
+    
+    fac = get_factor(_MIN_SNOW, snow, _MAX_SNOW)
+
+    # reseed for random vals on every frame
+    random.seed()
+    main_x_speed = random.uniform(-0.33, 0.33)
+
+    num_lines = int(fac * 500) + 50
+    
+    mix_line_len = int(fac * 5) + 1
+    mix_opacity = int(fac * 40) + 30
+    
+    for i in range(num_lines):
+        x = random.randint(0,_WIDTH)
+        y = random.randint(0,_HEIGHT)
+        x_speed = main_x_speed + random.uniform(-0.2,0.2)
         
+        _draw_one_rain_line(
+            x, y, mix_line_len, x_speed, mix_opacity, overlay=False,
+            clr=(0.5388, 0.15, 0.8)
+            )
+        if random.randint(0,1) == 1: # thick boys
+            _draw_one_rain_line(
+                x+1, y, mix_line_len, x_speed, mix_opacity, overlay=False,
+                clr=(0.5388, 0.15, 0.8)
+                )
+
 
 def draw_rain():
-    _MAX_RAIN = const(30)
+    _MAX_RAIN = const(10) # just guessing at a value
     _MIN_RAIN = const(0)
     
     rain = data_parser.WEATHER['rain']
+    
+    draw_snow()
+    
+    if rain < 0.3:
+        return
     
     fac = get_factor(_MIN_RAIN, rain, _MAX_RAIN)
 
@@ -865,9 +909,12 @@ def draw_rain():
     random.seed()
     x_speed = random.uniform(-0.25, 0.25)
 
-    num_lines = int(ease_in_sine(fac) * 400)
+    num_lines = int(fac * 400) + 50
+    if num_lines < 100:
+        num_lines = 100
+    
     line_len = int(fac * 80) + 10
-    opacity = int(fac * 40) + 10
+    opacity = int(fac * 30) + 30
     for i in range(num_lines):
         x = random.randint(0,_WIDTH)
         y = random.randint(0,_HEIGHT)
