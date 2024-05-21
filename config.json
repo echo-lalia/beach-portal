@@ -1,1 +1,6 @@
-{"wifi_creds": [["Kachow", "stevenuniverse"], ["Intertwined", "ArloBarlo"]], "tide_stations": ["5cebf1e43d0f4a073c4bc404", "5cebf1de3d0f4a073c4bb943"]}
+{
+"wifi_creds": [["ssid", "pass"], ["ssid2", "pass2"]], 
+"location_coords": [45.67890, -123.4567], 
+"tide_stations": ["5cebf1e43d0f4a073c4bc404", "5cebf1de3d0f4a073c4bb943"], 
+"birthday": [12, 31],
+}
