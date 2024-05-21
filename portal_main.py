@@ -13,6 +13,7 @@ from array import array
 from images import cloud1, cloud2, cloud3, beachdebris
 from images import cake, christmastree, pumpkin, hearts
 from images import boatsl, boatsr
+import gc
 
 freq(240_000_000)
 

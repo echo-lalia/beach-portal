@@ -686,8 +686,16 @@ class DecimalNumber:
         correct, integer_number, num_decimals = DecimalNumber._parse_number(
             number)
         if not correct:
-            raise DecimalNumberExceptionParseError(
-                f"Syntax error parsing {type(number).__name__}: {number}")
+            # just for stability, this will help to parse floats that throw errors.
+            # probably shouldn't be used in official release of module
+            try:
+                return DecimalNumber(f"{number:.f}")
+            except:
+                raise DecimalNumberExceptionParseError(
+                    f"Syntax error parsing {type(number).__name__}: {number}"
+                    )
+#             raise DecimalNumberExceptionParseError(
+#                 f"Syntax error parsing {type(number).__name__}: {number}")
         else:
             n = DecimalNumber(integer_number, num_decimals)
         return n
