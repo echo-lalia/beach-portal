@@ -20,7 +20,7 @@ freq(240_000_000)
 # debug tools:
 _FORCE_MAX_LIGHT_ = False
 _FAST_CLOCK = False
-_SUPRESS_TIME_SYNC = True
+_SUPRESS_TIME_SYNC = False
 
 
 _ADVANCE_SECONDS = const(60 * 60)
