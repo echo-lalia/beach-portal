@@ -3,3 +3,7 @@
 #esp.osdebug(None)
 #import webrepl
 #webrepl.start()
+import time
+# give some time to interrupt
+time.sleep(1)
+import portal_main
