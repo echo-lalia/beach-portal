@@ -326,6 +326,14 @@ class Display:
         color = self.overlay_viper(bg, color, percent)
         self.fbuf.pixel(y, x, swap_bytes(color))
     
+    def multiply_pixel(self, x, y, color, percent=100):
+        bg = self.fbuf.pixel(y,x)
+        if bg is None:
+            return
+        bg = swap_bytes(bg)
+        color = self.multiply_viper(bg, color, percent)
+        self.fbuf.pixel(y, x, swap_bytes(color))
+    
     def hline(self, x, y, width, color):
         color = HSV(color)
         self.fbuf.vline(y,x,width, color)
@@ -421,142 +429,43 @@ class Display:
             r_mod, g_mod, b_mod,
             )
     
-    @staticmethod
-    def overlay_val_float(a,b):
-        if a < 0.5:
-            return 2 * a * b
-        else:
-            return 1 - (2 * (1 - a) * (1 - b))
+#     @staticmethod
+#     def overlay_val_float(a,b):
+#         if a < 0.5:
+#             return 2 * a * b
+#         else:
+#             return 1 - (2 * (1 - a) * (1 - b))
             
-    @staticmethod
-    @micropython.native
-    def overlay_floats(clr1, clr2, multi=1):
-        r1,g1,b1 = separate_color565(clr1)
-        r2,g2,b2 = separate_color565(clr2)
-        
-        r1 /= 31; g1 /= 63; b1 /= 31
-        r2 /= 31; g2 /= 63; b2 /= 31
-        
-        red = (Display.overlay_val_float(r1, r2) * multi) + (r1 * (1-multi))
-        green = (Display.overlay_val_float(g1, g2) * multi) + (g1 * (1-multi))
-        blue = (Display.overlay_val_float(b1, b2) * multi) + (b1 * (1-multi))
-        
-        red *= 31
-        green *= 63
-        blue *= 31
-        
-        
-        return combine_color565(
-            int(red),
-            int(green),
-            int(blue))
-    
-    @staticmethod
-    @micropython.native
-    def _float_overlay_component(a,b,mul):
-        """Helper for the viper function, for the one part that can't use int math"""
-        return int((1 - (2 * (1 - (a/mul)) * (1 - (b/mul)))) * mul)
-        
 #     @staticmethod
-#     @micropython.viper
-#     def viper_overlay(clr1:int, clr2:int) -> int:
-#         """Use viper to overlay two 565 colors."""
-#         # separate 565 color
-#         r1 = ((clr1 >> 11) & 0x1F)
-#         g1 = ((clr1 >> 5) & 0x3F)
-#         b1 = (clr1 & 0x1F)
+#     @micropython.native
+#     def overlay_floats(clr1, clr2, multi=1):
+#         r1,g1,b1 = separate_color565(clr1)
+#         r2,g2,b2 = separate_color565(clr2)
 #         
-#         r2 = ((clr2 >> 11) & 0x1F)
-#         g2 = ((clr2 >> 5) & 0x3F)
-#         b2 = (clr2 & 0x1F)
-# 
-#         # preform overlay math on red/green/blue channels
+#         r1 /= 31; g1 /= 63; b1 /= 31
+#         r2 /= 31; g2 /= 63; b2 /= 31
 #         
-#         if r1 < (15):
-#             red = (r1 * r2) // 31
-#         else:
-#             red = int(Display._float_overlay_component(r1,r2,31))
+#         red = (Display.overlay_val_float(r1, r2) * multi) + (r1 * (1-multi))
+#         green = (Display.overlay_val_float(g1, g2) * multi) + (g1 * (1-multi))
+#         blue = (Display.overlay_val_float(b1, b2) * multi) + (b1 * (1-multi))
 #         
-#         if g1 < (31):
-#             green = (g1 * g2) // 63
-#         else:
-#             green = int(Display._float_overlay_component(g1,g2,63))
-#         
-#         if b1 < (15):
-#             blue = (b1 * b2) // 31
-#         else:
-#             blue = int(Display._float_overlay_component(b1,b2,31))
+#         red *= 31
+#         green *= 63
+#         blue *= 31
 #         
 #         
-#         return (red << 11) | (green << 5) | blue
-    
+#         return combine_color565(
+#             int(red),
+#             int(green),
+#             int(blue))
+#     
 #     @staticmethod
-#     @micropython.viper
-#     def overlay_viper(clr1:int, clr2:int, percentage:int=100) -> int:
-#         """Fast viper function for overlaying two colors."""
-#         # separate rgb565
-#         r1 = (clr1 >> 11) & 0x1F
-#         g1 = (clr1 >> 5) & 0x3F
-#         b1 = clr1 & 0x1F
-#         
-#         r2 = (clr2 >> 11) & 0x1F
-#         g2 = (clr2 >> 5) & 0x3F
-#         b2 = clr2 & 0x1F
-#         
-#         # preform overlay math on each component pair
-#         # this would be better to read if it were separated to another function,
-#         # however it's faster if it's all inline
-#         
-#         divisor = 31
-#         if r1 < (divisor // 2 + 1):
-#             red = (2 * r1 * r2) // divisor
-#         else:
-#             # invert colors
-#             ir1 = divisor - r1
-#             ir2 = divisor - r2
-#             # multiply
-#             output = (2 * ir1 * ir2) // divisor
-#             #uninvert output
-#             output = divisor - output
-#             red = output
-#         
-#         divisor = 63
-#         if g1 < (divisor // 2 + 1):
-#             green = (2 * g1 * g2) // divisor
-#         else:
-#             # invert colors
-#             ig1 = divisor - g1
-#             ig2 = divisor - g2
-#             # multiply
-#             output = (2 * ig1 * ig2) // divisor
-#             #uninvert output
-#             output = divisor - output
-#             green = output
-#         
-#         divisor = 31
-#         if b1 < (divisor // 2 + 1):
-#             blue = (2 * b1 * b2) // divisor
-#         else:
-#             # invert colors
-#             ib1 = divisor - b1
-#             ib2 = divisor - b2
-#             # multiply
-#             output = (2 * ib1 * ib2) // divisor
-#             #uninvert output
-#             output = divisor - output
-#             blue = output
-#         
-#         # apply percentages
-#         bg_percent = 100 - percentage
-#         
-#         red = (red * percentage + r1 * bg_percent) // 100
-#         
-#         green = (green * percentage + g1 * bg_percent) // 100
-#         
-#         blue = (blue * percentage + b1 * bg_percent) // 100
-#         
-#         # combine color565
-#         return (red << 11) | (green << 5) | blue
+#     @micropython.native
+#     def _float_overlay_component(a,b,mul):
+#         """Helper for the viper function, for the one part that can't use int math"""
+#         return int((1 - (2 * (1 - (a/mul)) * (1 - (b/mul)))) * mul)
+
+
     @staticmethod
     @micropython.viper
     def mix_viper(clr1:int, clr2:int, percentage:int=100) -> int:
@@ -576,6 +485,43 @@ class Display:
         red = (r2 * percentage + r1 * bg_percent) // 100
         green = (g2 * percentage + g1 * bg_percent) // 100
         blue = (b2 * percentage + b1 * bg_percent) // 100
+        
+        if red > 31:
+            red = 31
+        if green > 63:
+            green = 63
+        if blue > 31:
+            blue = 31
+        
+        # combine color565
+        return (red << 11) | (green << 5) | blue
+    
+    @staticmethod
+    @micropython.viper
+    def multiply_viper(clr1:int, clr2:int, percentage:int=100) -> int:
+        """Fast viper function for adding two colors."""
+        # separate rgb565
+        r1 = (clr1 >> 11) & 0x1F
+        g1 = (clr1 >> 5) & 0x3F
+        b1 = clr1 & 0x1F
+        
+        r2 = (clr2 >> 11) & 0x1F
+        g2 = (clr2 >> 5) & 0x3F
+        b2 = clr2 & 0x1F
+        
+        # preform overlay math on each component pair
+        # this would be better to read if it were separated to another function,
+        # however it's faster if it's all inline
+        red = (r1 * r2) // 31
+        green = (g1 * g2) // 63
+        blue = (b1 + b2) // 31
+        
+        # apply percentages
+        bg_percent = 100 - percentage
+        
+        red = (red * percentage + r1 * bg_percent) // 100
+        green = (green * percentage + g1 * bg_percent) // 100
+        blue = (blue * percentage + b1 * bg_percent) // 100
         
         if red > 31:
             red = 31
@@ -716,44 +662,7 @@ class Display:
                 cache_ptr[source_clr] = clr
                 # display results
                 buf_ptr[i] = clr
-    
-#     @micropython.viper
-#     def overlay_color(self, color:int, multi):
-#         """Overlay a given color over entire framebuffer."""
-#         buf = self.buf
-#         buf_ptr = ptr16(self.buf)
-#         buf_len = int(len(buf)) // 2
-#         
-#         # cache one color in memory so we can save time on repeated colors
-#         cached_source = -1
-#         cached_target = -1
-#         # often a single pixel is different, before returning
-#         cached_source2 = -1
-#         cached_target2 = -1
-#         
-#         for i in range(0, buf_len):
-#             
-#             # un-swap source bytes
-#             clr = buf_ptr[i]
-#                 
-#             if clr == cached_source:
-#                 buf_ptr[i] = cached_target
-#             elif clr == cached_source2:
-#                 buf_ptr[i] = cached_target2
-#             else:
-#                 cached_source2 = cached_source
-#                 cached_source = clr
-#                 
-#                 clr = ((clr & 255) << 8) + (clr >> 8)
-#             
-#                 clr = int(self.overlay_floats(clr, color, multi))
-#                 # re-swap bytes
-#                 clr = ((clr & 255) << 8) + (clr >> 8)
-#                 
-#                 cached_target2 = cached_target
-#                 cached_target = clr
-#                 
-#                 buf_ptr[i] = clr
+
     
     @micropython.viper
     def _invert_buffer(self, buffer):
@@ -763,9 +672,6 @@ class Display:
 
         x_start = int(self.width) - 1 if self.invert_x else 0
         y_start = int(self.height) - 1 if self.invert_y else 0
-        
-#         x_end = 0 if self.invert_x else int(self.width)
-#         y_end = 0 if self.invert_y else int(self.height)
         
         x_step = -1 if self.invert_x else 1
         y_step = -1 if self.invert_y else 1
@@ -815,7 +721,7 @@ class Display:
                 
             width = int(size * fac)
             self.dithered_hline(x - (width // 2), y + i, width, colors[i])
-            #self.hline(x - (width // 2), y + i, width, colors[i])
+
 
     @micropython.native
     def glow_circle(self, x, y, inner_radius, outer_radius, color, steps=10):
@@ -863,6 +769,21 @@ class Display:
             
             #fbuf.vline(y+i, x, width, HSV(color))
             self.dithered_hline(x, y+i, width, color)
+    
+    def blit_framebuf(self, fbuf, x, y, key=-1, palette=None):
+        """
+        Copy buffer to display framebuf at the given location.
+
+        Args:
+            buffer (bytes): Data to copy to display
+            x (int): Top left corner x coordinate
+            Y (int): Top left corner y coordinate
+            width (int): Width
+            height (int): Height
+            key (int): color to be considered transparent
+            palette (framebuf): the color pallete to use for the buffer
+        """
+        self.fbuf.blit(fbuf, x, y, key, palette)
     
     def blit_buffer(self, buffer, x, y, width, height, key=-1, palette=None):
         """
@@ -935,10 +856,117 @@ class Display:
 
         
         self.blit_buffer(buffer,x,y,width,height,key=palette[0])
+    
+    
+    def bitmap(self, bitmap, x, y, index=0, key=-1, palette=None):
+        """
+        Draw a bitmap on display at the specified column and row
+
+        Args:
+            bitmap (bitmap_module): The module containing the bitmap to draw
+            x (int): column to start drawing at
+            y (int): row to start drawing at
+            index (int): Optional index of bitmap to draw from multiple bitmap
+                module
+            key (int): colors that match they key will be transparent.
+        """
+        x, y = y, x
+        width = bitmap.WIDTH
+        height = bitmap.HEIGHT
+        to_col = x + width - 1
+        to_row = y + height - 1
+
+        bitmap_size = height * width
+        buffer_len = bitmap_size * 2
+        bpp = bitmap.BPP
+        bs_bit = bpp * bitmap_size * index  # if index > 0 else 0
+        if palette is None:
+            palette = bitmap.PALETTE
+        
+        #swap colors if needed:
+        palette = [swap_bytes(x) for x in palette]
+        
+        buffer = bytearray(buffer_len)
+
+        for i in range(0, buffer_len, 2):
+            color_index = 0
+            for _ in range(bpp):
+                color_index = (color_index << 1) | (
+                    (bitmap.BITMAP[bs_bit >> 3] >> (7 - (bs_bit & 7))) & 1
+                )
+                bs_bit += 1
+
+            color = palette[color_index]
+
+            buffer[i] = color & 0xFF
+            buffer[i + 1] = color >> 8
+        
+        self.blit_buffer(buffer,x,y,width,height,key=key)
+        
+
+    @micropython.viper
+    def bitmap_transparent(self, module, fg_clr:int, x:int, y:int, key:int, opacity_percent:int, index:int, mix_func):
+        """
+        Draw a 2 color bitmap as a transparent icon on display,
+        at the specified column and row, using given color and memoryview object.
+        
+        This function was particularly designed for use with MicroHydra Launcher,
+        but could probably be useful elsewhere too.
+
+        Args:
+            (bitmap_module): The module containing the bitmap to draw
+            bitmap: The actual bitmap buffer to draw
+            color: the non-transparent color of the bitmap
+            x (int): column to start drawing at
+            y (int): row to start drawing at
+            invert_colors (bool): flip transparent and non-tranparent parts of bitmap.
+           
+        """
+        x, y, = y, x
+        
+        # not how this was intended to be used, but works with viper:
+        bitmap = ptr8(module._bitmap)
+        
+        width = int(module.WIDTH)
+        height = int(module.HEIGHT)
+        to_col = x + width - 1
+        to_row = y + height - 1
+        
+        bitmap_size = height * width
+        buffer_len = bitmap_size * 2
+        bpp = int(module.BPP)
+        bs_bit = bpp * bitmap_size * index
+        buffer = bytearray(buffer_len)
+            
+        
+        for i in range(0, buffer_len, 2):
+            color_index = 0
+            for _ in range(bpp):
+                color_index = (color_index << 1) | (
+                    (bitmap[bs_bit >> 3] >> (7 - (bs_bit & 7))) & 1
+                )
+                bs_bit += 1
+            
+            if color_index == 0:
+                color = key
+            else:
+                ix = (i // 2) % width
+                iy = (i // 2) // width
+                color = int(mix_func(
+                            self.get_pixel_viper(iy + y, ix + x),
+                            (fg_clr),
+                            opacity_percent,
+                            ))
+
+            buffer[i + 1] = color & 0xFF
+            buffer[i] = color >> 8
+
+        
+        self.blit_buffer(buffer,x,y,width,height,key=key)
+
 
     @micropython.viper
     def draw_image_fancy(self, module, color_list, x:int, y:int, key:int, opacity_percent:int):
-        # TODO: add method of selecting color from list of colors instead of one color
         x, y, = y, x
         
         bitmap = module.BITMAP
@@ -1057,7 +1085,7 @@ class Display:
 if __name__ == "__main__":
     #import portal_main
     DISPLAY = Display()
-    DISPLAY.overlay_color(245)
+#     DISPLAY.overlay_color(245)
 #     import time
 #     from machine import Pin
 #     

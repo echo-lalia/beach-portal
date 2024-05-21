@@ -11,6 +11,8 @@ import random
 from images import mountain1, mountain2, mountain3, mountain4, title
 from array import array
 from images import cloud1, cloud2, cloud3, beachdebris
+from images import cake, christmastree, pumpkin, hearts
+from images import boatsl, boatsr
 
 freq(240_000_000)
 
@@ -19,6 +21,8 @@ _FORCE_MAX_LIGHT_ = False
 _FAST_CLOCK = True
 _SUPRESS_TIME_SYNC = True
 
+
+_ADVANCE_SECONDS = const(60 * 60)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ _CONSTANTS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -115,7 +119,7 @@ def advance_clock():
     """Advance the system clock,
     used to rapdidly test different times
     """
-    _ADVANCE_SECONDS = const(60 * 30)
+    
     
     epoch = time.time()
     epoch += _ADVANCE_SECONDS
@@ -204,8 +208,114 @@ def draw_sun():
         
         # white glow in center
         DISPLAY.glow_circle(sun_x, position, 10, 20, (0.13,1,1))
+
+
+@micropython.native
+def _hline_circle_fbuf(self, x, y, size, colors, fbuf):
+    """Designed for glow circle,
+    this function draws a circle with hlines,
+    and each hline can have a specified color.
+    """
+    
+    y -= size // 2 # center y
+    for i in range(size):
+        fac = ((i + 1) / (size))
         
+        if fac < 0.5:
+            fac = ease_out_circ((fac + fac))
+        else:
+            fac = 1 - ease_in_circ((fac - 0.5) * 2)
+            
+        width = int(size * fac)
+        fbuf.vline(y + i, x - (width // 2), width, colors[i])
+            
+            
+@micropython.native
+def _glow_circle_fbuf(self, x, y, inner_radius, outer_radius, color, steps=10):
+    if _FAST_RENDER:
+        self.ellipse(x, y, inner_radius, inner_radius, color, f=True)
+        return
+
+    size = outer_radius * 2 + 1
+    steps = outer_radius - inner_radius
+    
+    #sample bg colors for transparency
+    colors = []
+    for i in range(size):
+        # take multiple samples because of the dithering
+        sample1 = self.get_pixel(x-1, y-outer_radius+i)
+        sample2 = self.get_pixel(x+1, y-outer_radius+i)
+        colors.append(mix_hsv(sample1, sample2))
+        #color = add_hsv_in_rgb(color, RGB565_to_HSV(sample))
+        #colors.append(sample1)
+    
+    for step in range(steps):
+    
+        fac = ease_in_circ((step+1) / steps)
+        blended_colors = [add_hsv_in_rgb(clr, color, factor=fac) for clr in colors]
         
+        self.hline_circle(x, y, size, blended_colors)
+        
+        # reduce size and trim unused colors for next step
+        size = size - 2
+        colors = colors[1:-1]
+
+
+def _draw_moon(fraction, bg_color) -> framebuf.FrameBuffer:
+    _MOON_RADIUS = const(20)
+    _MOON_WIDTH = const(_MOON_RADIUS * 2 + 1)
+    _MAX_SHADOW_RADIUS = const(100)
+    _SHADOW_RADIUS_DIFF = const(_MAX_SHADOW_RADIUS - _MOON_RADIUS)
+    
+    crater_shape = (
+        15,36,12,34,10,36,13,38,16,37,17,38,19,38,21,38,20,37,22,37,25,37,26,35,20,33,18,30,21,29,23,32,26,32,25,30,21,
+        26,19,28,17,24,14,26,13,24,16,22,15,19,17,18,19,19,19,16,23,17,26,17,28,17,29,15,29,12,31,11,29,10,30,8,27,6,25,
+        8,24,6,26,4,17,0,10,3,4,8,2,13,5,8,8,7,3,14,1,18,3,27,7,30,8,28,5,23,3,19,7,20,10,16,14,14,13,9,16,14,12,20,7,22,
+        6,23,12,29,15,33,17,33,16,35,18,37,17,37,
+        )
+    
+    
+    moon_color = swap_bytes(combine_color565(26, 53, 27))
+    crater_color = swap_bytes(combine_color565(21, 43, 21))
+    
+    fbuf = framebuf.FrameBuffer(
+        bytearray(_MOON_WIDTH * _MOON_WIDTH * 2),
+        _MOON_WIDTH, _MOON_WIDTH,
+        framebuf.RGB565
+        )
+    
+    # draw soft edge
+    outline_color = blend_color_fast(bg_color, swap_bytes(moon_color))
+    fbuf.ellipse(_MOON_RADIUS, _MOON_RADIUS, _MOON_RADIUS, _MOON_RADIUS, outline_color, True)
+    #draw main shape
+    fbuf.ellipse(_MOON_RADIUS, _MOON_RADIUS, _MOON_RADIUS-1, _MOON_RADIUS-1, moon_color, True)
+    
+    # draw craters
+    fbuf.poly(
+        0, 0,
+        array('h', crater_shape),
+        crater_color, True,
+        )
+    
+    
+    # draw shadow
+    if fraction < 0.5:
+        fac = fraction * 2
+        shadow_size = _MOON_RADIUS + int(_SHADOW_RADIUS_DIFF * fac)
+        shadow_x = _MOON_WIDTH - shadow_size - int(fac * _MOON_RADIUS)
+        fbuf.ellipse(_MOON_RADIUS, shadow_x, shadow_size, shadow_size, 0, True)
+    else:
+        fac = 1 - ((fraction - 0.5) * 2)
+        shadow_size = _MOON_RADIUS + int(_SHADOW_RADIUS_DIFF * fac) + 2
+        shadow_x = _MOON_RADIUS + shadow_size - int((1 - fac) * _MOON_RADIUS) - 1
+        
+        for i in range(_MOON_RADIUS):
+            fbuf.ellipse(_MOON_RADIUS, shadow_x, shadow_size, shadow_size, 0)
+            shadow_size += 1
+    
+    return fbuf
+
+
 def draw_moon(sun_position):
     
     altitude = data_parser.SUN_DATA['moon_position']['altitude']
@@ -237,28 +347,38 @@ def draw_moon(sun_position):
     
     
     fraction = data_parser.SUN_DATA['moon_illumination']['fraction']
-    # dont draw moon if it's a 'new moon'
-    if fraction > 0.05:
-        # sample color behind moon (for shadow)
-        bg_clr = DISPLAY.color_pick(moon_x, position)
-        
-        DISPLAY.glow_circle(moon_x, position, 18,24, (0.5, 0.5, 0.5))
-        
-        
-        # if moon is not full, draw a shadow on it:
-        if fraction < 0.95:
-            
-            DISPLAY.ellipse(
-                moon_x - int(36 * fraction),
-                position, 20,20,
-                bg_clr, True)
+    
+    
+    bg_clr = DISPLAY.color_pick(moon_x, position)
+    fbuf = _draw_moon(fraction, HSV(bg_clr))
+    
+    # you shouldnt see stars through moon shadow; draw ellipse behind moon
+    DISPLAY.ellipse(
+        moon_x, position,
+        _MOON_RADIUS-2, _MOON_RADIUS-2,
+        bg_clr, True
+        )
+    # blit our drawn moon image
+    DISPLAY.blit_framebuf(fbuf, position - _MOON_RADIUS, moon_x - _MOON_RADIUS, key=0)
+    
+#     # dont draw moon if it's a 'new moon'
+#     if fraction > 0.05:
+#         # sample color behind moon (for shadow)
+#         bg_clr = DISPLAY.color_pick(moon_x, position)
+#         
+#         DISPLAY.glow_circle(moon_x, position, 18,24, (0.5, 0.5, 0.5))
+#         
+#         # if moon is not full, draw a shadow on it:
+#         if fraction < 0.95:
+#             
+#             DISPLAY.ellipse(
+#                 moon_x - int(36 * fraction),
+#                 position, 20,20,
+#                 bg_clr, True)
 
 
 @micropython.viper
 def blend_color_fast(rgb1:int, rgb2:int) -> int:
-    # assume first color is from fbuf, unswap it
-    rgb1 = ((rgb1 & 255) << 8) + (rgb1 >> 8)
-    
     # split color components
     red = (rgb1 >> 11) & 0x1F
     green = (rgb1 >> 5) & 0x3F
@@ -279,6 +399,58 @@ def blend_color_fast(rgb1:int, rgb2:int) -> int:
     rgb = ((rgb & 255) << 8) + (rgb >> 8)
     
     return rgb
+
+@micropython.viper
+def overlay_viper(clr1:int, clr2:int, percentage:int=100) -> int:
+    """Fast viper function for overlaying two colors."""
+    # separate rgb565
+    r1 = (clr1 >> 11) & 0x1F
+    g1 = (clr1 >> 5) & 0x3F
+    b1 = clr1 & 0x1F
+    
+    r2 = (clr2 >> 11) & 0x1F
+    g2 = (clr2 >> 5) & 0x3F
+    b2 = clr2 & 0x1F
+    
+    # preform overlay math on each component pair
+    # this would be better to read if it were separated to another function,
+    # however it's faster if it's all inline
+    if r1 < (15):
+        red = (2 * r1 * r2) // 31
+    else:
+        # invert colors
+        # multiply
+        red = (2 * (31 - r1) * (31 - r2)) // 31
+        #uninvert output
+        red = 31 - red
+    
+    if g1 < (31):
+        green = (2 * g1 * g2) // 63
+    else:
+        # invert colors
+        # multiply
+        green = (2 * (63 - g1) * (63 - g2)) // 63
+        #uninvert output
+        green = 63 - green
+    
+    if b1 < (15):
+        blue = (2 * b1 * b2) // 31
+    else:
+        # invert colors
+        # multiply
+        blue = (2 * (31 - b1) * (31 - b2)) // 31
+        #uninvert output
+        blue = 31 - blue
+    
+    # apply percentages
+    bg_percent = 100 - percentage
+    
+    red = (red * percentage + r1 * bg_percent) // 100
+    green = (green * percentage + g1 * bg_percent) // 100
+    blue = (blue * percentage + b1 * bg_percent) // 100
+    
+    # combine color565
+    return (red << 11) | (green << 5) | blue
 
 
 @micropython.viper
@@ -311,9 +483,9 @@ def _mirror_water(x_start:int,y_start:int,width:int,height:int, buffer, colors):
             
             target_idx = (target_y) + (target_x * _HEIGHT)
             source_idx = (source_y) + (target_x * _HEIGHT)
-
             
-            buf_ptr[target_idx] = int(blend_color_fast(buf_ptr[source_idx], colors[y]))
+            buf_ptr[target_idx] = int(swap_bytes(overlay_viper(colors[y], swap_bytes(buf_ptr[source_idx]), 90)))
+            #buf_ptr[target_idx] = int(blend_color_fast(buf_ptr[source_idx], colors[y]))
 
 
 def combine_color565(red, green, blue):
@@ -400,6 +572,8 @@ def draw_stars():
         DISPLAY.add_pixel(x,y,clr,int(fac))
     
 def avg_color565(color_list):
+    if not color_list:
+        return 0
     red, green, blue = 0, 0, 0
     for color in color_list:
         r,g,b = separate_color565(color)
@@ -646,7 +820,8 @@ def multiply_tuple(t1, t2, maximum=1.0):
         if t1[i] > maximum:
             t1[i] = maximum
     return tuple(t1)
-        
+
+
 def _draw_one_wind_line(x, y, length, y_speed, opacity):
     bg_clr = DISPLAY.color_pick(x,y)
     bg_clr = multiply_tuple(bg_clr, (1.0, 0.5, random.uniform(0.8,1.2)))
@@ -731,32 +906,252 @@ def draw_beach_debris(epoch):
     
     random.seed(epoch // 10800)
     
-    num_debris = random.randint(3,10)
+    num_debris = random.randint(3,9)
     for i in range(num_debris):
-        x = random.randint(0,_WIDTH)
+        x = int(ease_in_out_circ(random.random()) * _WIDTH)
         y = random.randint(WATER_END, _HEIGHT)
         
         index = random.randint(0,15)
         
-        bg_clr = DISPLAY.get_pixel(x, y)
-        hue = random.uniform(0.04, 0.119)
-        sat = random.uniform(0.0, 0.5)
-        #val = clamp(bg_clr[2] + random.uniform(-0.5, 0.2))
-        val = random.uniform(0.0, 0.6)
-#         clr = display.mix_hsv_in_rgb(
-#             bg_clr,
-#             (hue, sat, val),
-#             0.3,
-#             )
-        clr = DISPLAY.overlay_viper(
-            HSV(bg_clr),
-            HSV((hue, sat, val)),
-            50
-            )
+        hue, sat, val = data_parser.CURRENT_COLORS['beach_bottom']
+        val = clamp(val + random.uniform(0.0, 0.05))
+        clr = HSV((hue, sat, val))
         
+        shade_sat = clamp(sat - 0.2)
+        shade_val = clamp(val - 0.4)
+        shade_clr = HSV((hue, shade_sat, shade_val))
+        
+        light_sat = clamp(sat - 0.2)
+        light_val = clamp(val + 0.1)
+        light_clr = HSV((hue, light_sat, light_val))
+
+        # draw highlight
+        DISPLAY.bitmap_transparent(
+            beachdebris, light_clr, x - 8, y - 1, 0, 10, index, DISPLAY.add_viper,
+            )
+        # draw shadow behind debris
+        DISPLAY.bitmap_transparent(
+            beachdebris, shade_clr, x - 8, y + 1, 0, 50, index, DISPLAY.multiply_viper,
+            )
+        # draw debris
         DISPLAY.bitmap_icons(
             beachdebris, beachdebris.BITMAP, clr, x - 8, y, index=index,
             )
+
+
+def _overlay_color_on_list(clr_list, overlay_clr, opacity=100, key=None):
+    output = []
+    for clr in clr_list:
+        if clr == key:
+            output.append(clr)
+        else:
+            output.append(overlay_viper(
+                clr, overlay_clr, opacity
+                ))
+    return output
+
+def _clr_brightness(clr):
+    r,g,b = separate_color565(clr)
+    g //= 2
+    return r+g+b
+
+def _draw_seasonal_image(image, epoch, shadow_y_offset=0):
+    width = image.WIDTH
+    height = image.HEIGHT
+    palette = image.PALETTE.copy()
+    palette = _overlay_color_on_list(palette, HSV(data_parser.CURRENT_COLORS['seasonal_overlay']), opacity=100, key=65535)
+    
+    y = _HEIGHT - width - 10
+    x = int(ease_in_out_circ(ping_pong(epoch // 60, _WIDTH) / _WIDTH) * (_WIDTH - height))
+    
+    # avoid putting stuff in the water
+    if WATER_END > (_HEIGHT - 20):
+        return
+    
+    # find image color to use for shadow
+    banned_colors = (65535, 0)
+    pruned_palette = []
+    for clr in palette:
+        if clr not in banned_colors and _clr_brightness(clr) < 55:
+            pruned_palette.append(clr)
+    
+    img_clr = avg_color565(pruned_palette)
+    bg_clr = HSV(DISPLAY.color_pick(x + (height//2), y + width))
+    shadow_color = DISPLAY.multiply_viper(bg_clr, img_clr, 30)
+    light_shadow_color = DISPLAY.multiply_viper(bg_clr, img_clr, 10)
+    
+    DISPLAY.ellipse(x + (height//2), y+width+shadow_y_offset, height//2, 4, display.RGB565_to_HSV(light_shadow_color), f=True)
+    DISPLAY.ellipse(x + (height//2), y+width+shadow_y_offset, height//2-2, 2, display.RGB565_to_HSV(shadow_color), f=True)
+    
+    DISPLAY.bitmap(image, x, y, palette=palette, key=65535)
+
+
+
+def draw_seasonal(epoch):
+    birthday = data_parser.CONFIG['birthday']
+    year, month, mday, _, _, _, weekday, yearday = time.localtime(epoch)
+
+    if month == birthday[0] and mday == birthday[1]:
+        _draw_seasonal_image(cake, epoch, shadow_y_offset=-2)
+    elif month == 12:
+        _draw_seasonal_image(christmastree, epoch)
+    elif month == 10:
+        _draw_seasonal_image(pumpkin, epoch)
+    elif month == 2 and day == 14:
+        _draw_seasonal_image(hearts, epoch)
+
+
+def handle_boats(boat_list):
+    random.seed()
+    if random.random() > 0.9:
+        boat_list.append(Boat())
+    
+    for boat in boat_list:
+        if _FAST_CLOCK:
+            for _ in range(20):
+                boat.move()
+        
+        boat.move()
+        
+        if boat.alive:
+            boat.draw()
+        else:
+            boat_list.remove(boat)
+    print(boat_list)
+    print(WATER_END)
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ BOATS: ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+_BOAT_OUTSIDE_OFFSET = const(32)
+class Boat:
+    def __init__(self):
+        self.index = random.randint(0,7)
+        self.direction = random.choice((-1, 1))
+        
+        if self.direction == 1:
+            self.x = -_BOAT_OUTSIDE_OFFSET
+        else:
+            self.x = _WIDTH + _BOAT_OUTSIDE_OFFSET
+        self.y = random.randint(min(_SKY_HEIGHT + 20, WATER_END - _BOAT_OUTSIDE_OFFSET - 1), WATER_END - _BOAT_OUTSIDE_OFFSET)
+        
+        self.color = (random.random(), random.uniform(0.0, 0.33), random.uniform(0.1, 0.6))
+        self.alive = True
+        
+        
+    def move(self):
+        self.x += self.direction
+        if (self.direction == 1 and self.x > _WIDTH + _BOAT_OUTSIDE_OFFSET)\
+           or (self.direction == -1 and self.x < -_BOAT_OUTSIDE_OFFSET):
+            self.alive = False
+        if self.y > WATER_END:
+            self.alive = False
+            
+    
+    def _bitmap_on_fbuf(self, bitmap, index=0, palette=None) -> framebuf.FrameBuffer:
+        width = bitmap.WIDTH
+        height = bitmap.HEIGHT
+
+        bitmap_size = height * width
+        buffer_len = bitmap_size * 2
+        bpp = bitmap.BPP
+        bs_bit = bpp * bitmap_size * index  # if index > 0 else 0
+        if palette is None:
+            palette = bitmap.PALETTE
+        
+        #swap colors if needed:
+        palette = [swap_bytes(x) for x in palette]
+        
+        buffer = bytearray(buffer_len)
+
+        for i in range(0, buffer_len, 2):
+            color_index = 0
+            for _ in range(bpp):
+                color_index = (color_index << 1) | (
+                    (bitmap.BITMAP[bs_bit >> 3] >> (7 - (bs_bit & 7))) & 1
+                )
+                bs_bit += 1
+
+            color = palette[color_index]
+
+            buffer[i] = color & 0xFF
+            buffer[i + 1] = color >> 8
+        
+        return buffer
+        return framebuf.FrameBuffer(buffer, width, height, framebuf.RGB565)
+    
+    
+    @micropython.viper
+    def _invert_buffer_y(self, buffer):
+        """Invert our rgb565 framebuffer using set mirror values."""
+        width = 32
+        height = 32
+
+        x_start = 31
+        y_start = 0
+        
+        x_step = -1
+        y_step = 1
+        
+        source_ptr = ptr16(buffer)
+        target = bytearray(width * height * 2)
+        target_ptr = ptr16(target)
+        
+        for y in range(0, height):
+            for x in range(0, width):
+                target_x = x_start + (x * x_step)
+                target_y = y_start + (y * y_step)
+                
+                target_idx = (target_y * width) + target_x
+                source_idx = (y * width) + x
+                
+                target_ptr[target_idx] = source_ptr[source_idx]
+        
+        return target
+    
+    
+    @micropython.viper
+    def _blit_buffer_overlay(self, buffer, x:int, y:int, width:int, height:int, opacity:int, key:int, drawing_function):
+        buf_ptr = ptr16(buffer)
+        
+        for iy in range(height):
+            for ix in range(width):
+                source_color = buf_ptr[(ix * height) + (iy % height)]
+                if source_color != key:
+                    drawing_function(x + ix, y + iy, swap_bytes(source_color), percent=opacity)
+                
+    
+    def draw(self):
+        color = self.color
+        color = overlay_viper(
+            HSV(color),
+            HSV(data_parser.CURRENT_COLORS['boat_overlay']),
+            100
+            )
+        
+        fbuf = self._bitmap_on_fbuf(
+            boatsr if self.direction == 1 else boatsl,
+            index=self.index,
+            palette=(0xffff, color),
+            )
+        fbuf = self._invert_buffer_y(fbuf)
+        #DISPLAY.blit_buffer(fbuf, self.y, self.x, 32, 32, key=0xffff, palette=(0xffff, color))
+        self._blit_buffer_overlay(fbuf, self.x, self.y + 1, 32, 32, 100, 65535, DISPLAY.overlay_pixel)
+        self._blit_buffer_overlay(fbuf, self.x, self.y + 1, 32, 32, 10, 65535, DISPLAY.mix_pixel)
+        
+        DISPLAY.bitmap(
+            boatsr if self.direction == 1 else boatsl,
+            self.x,
+            self.y - 31,
+            index=self.index,
+            key=0xffff,
+            palette=(0xffff, color))
+        
+
+
+    def __repr__(self):
+        return f"Boat(x={self.x}, y={self.y}, index={self.index}, direction={self.direction})"
+    
+    
     
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Main! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def main_loop():
@@ -771,52 +1166,132 @@ def main_loop():
     # remember how long since we last updated
     last_internet_update = time.time()
     
-    counter = 0
+    boat_list = [Boat()]
+    
+    counter = 12
     while True:
+        # main loop:
+        # for stability reasons, items in this loop contains many try/except and log statements.
+        # the intention is keep the device working on error,
+        # and also to make note of errors for later debugging.
+        
+        
         # init random with current time in hours.
         # This lets the contents of the loop be different every hour, without changing every single frame
         random.seed(time.time() // 3600)
         
         
-        # when it has been more than _RELOAD_DATA_SECONDS, reload our data
-        if time.time() - last_internet_update >= _RELOAD_DATA_SECONDS and not _SUPRESS_TIME_SYNC:
-            #print(time.time() - last_internet_update)
-            data_parser.update_data_internet()
-            last_internet_update = time.time()
-        
-        
-        # update calculated data every cycle
+        # get currrent epoch for use in different drawing functions.
+        # we can increase this time for testing, or just use it as-is.
         epoch = time.time()
         if _FAST_CLOCK:
             epoch += _ADVANCE_SECONDS * counter
         
-        do_full_calc = (counter % 3 == 0)
-        data_parser.update_data_calculate(date=epoch, full=do_full_calc)
+        
+        # when it has been more than _RELOAD_DATA_SECONDS, reload our data
+        if time.time() - last_internet_update >= _RELOAD_DATA_SECONDS and not _SUPRESS_TIME_SYNC:
+            try:
+                data_parser.update_data_internet()
+            except Exception as e:
+                log(f"data_parser.update_data_internet failed with this error: {e}")
+
+            last_internet_update = time.time()
+        
+        
+        
+        # update calculated data every cycle
+        try:
+            do_full_calc = (counter % 3 == 0)
+            data_parser.update_data_calculate(date=epoch, full=do_full_calc)
+        except Exception as e:
+            log(f"data_parser.update_data_calculate failed with this error: {e}")
         
         
         # graphics:
-        draw_sky()
-        draw_stars()
-        draw_sun()
-        draw_clouds(epoch)
-        draw_beach()
-        draw_sand(epoch)
-        draw_mountains(epoch)
-        draw_water()
-        draw_wind()
-        draw_rain()
+        try:
+            draw_sky()
+        except Exception as e:
+            log(f"draw_sky failed with this error: {e}")
+            
+        try:
+            draw_stars()
+        except Exception as e:
+            log(f"draw_stars failed with this error: {e}")
+
+        try:
+            draw_sun()
+        except Exception as e:
+            log(f"draw_sun failed with this error: {e}")
         
-        draw_beach_debris(epoch)
+        try:
+            draw_clouds(epoch)
+        except Exception as e:
+            log(f"draw_clouds failed with this error: {e}")
+            
+        try:
+            draw_beach()
+        except Exception as e:
+            log(f"draw_beach failed with this error: {e}")
+        
+        try:
+            draw_sand(epoch)
+        except Exception as e:
+            log(f"draw_sand failed with this error: {e}")
+        
+        try:
+            draw_mountains(epoch)
+        except Exception as e:
+            log(f"draw_mountains failed with this error: {e}")
+        
+        try:
+            draw_water()
+        except Exception as e:
+            log(f"draw_water failed with this error: {e}")
+        
+        try:
+            draw_wind()
+        except Exception as e:
+            log(f"draw_wind failed with this error: {e}")
+        
+        try:
+            draw_rain()
+        except Exception as e:
+            log(f"draw_rain failed with this error: {e}")
+        
+        try:
+            draw_beach_debris(epoch)
+        except Exception as e:
+            log(f"draw_beach_debris failed with this error: {e}")
+        
+        
+        # seasonal decor!
+        try:
+            draw_seasonal(epoch)
+        except Exception as e:
+            log(f"draw_seasonal failed with this error: {e}")
+        
+        
+        
+        handle_boats(boat_list)
+        
         
         # add overlay to display
-        DISPLAY.overlay_color(HSV(data_parser.CURRENT_OVERLAY), 100, HSV(data_parser.CURRENT_COLORS['fog']), data_parser.FOG_OPACITY)
+        try:
+            DISPLAY.overlay_color(HSV(data_parser.CURRENT_OVERLAY), 100, HSV(data_parser.CURRENT_COLORS['fog']), data_parser.FOG_OPACITY)
+        except Exception as e:
+            log(f"DISPLAY.overlay_color failed with this error: {e}")
         
-        DISPLAY.show()
+        try:
+            DISPLAY.show()
+        except Exception as e:
+            log(f"DISPLAY.show failed with this error: {e}")
         
         
         localtime = time.localtime(epoch)
         print(f"Time: {(localtime[3]-7)%24}:{localtime[4]}")
         print(f"Altitude: {data_parser.SUN_DATA['sun_position']['altitude']}, Azimuth: {data_parser.SUN_DATA['sun_position']['azimuth']}")
+        
+        
         counter += 1
         if counter > 1000:
             counter = 0
@@ -830,3 +1305,9 @@ except KeyboardInterrupt as e:
     print(e)
     BL_TIMER.deinit()
     DISPLAY.tft.deinit()
+# except Exception as e:
+#     log(f"Error in main loop: {e}")
+#     BL_TIMER.deinit()
+#     DISPLAY.tft.deinit()
+#     time.sleep(30)
+#     machine.reset()

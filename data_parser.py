@@ -38,16 +38,16 @@ SUN_DATA = {}
 TIDE_LEVEL = 1.5 # random/arbitrary val to start
 
 WEATHER = { # using default values to reduce possible errors
-    'precipitation': 0.0, 'rain': 0.0, 'wind_speed': 14.0, 'snow': 0.0, 'temperature': 10.0, 'visibility': 20000.0, 'cloud_cover': 10, 'precipitation_probability': 10
+    'precipitation': 0.0, 'rain': 0.0, 'wind_speed': 14.0, 'snow': 0.0, 'temperature': 10.0, 'visibility': 20000.0, 'cloud_cover': 40, 'precipitation_probability': 10
     }
 
 # dict stores color values as 4 tuples of hsv(3 tuple) values.
 # these colors ordered as: (sunrise color, noon color, sunset color, midnight color)
 # and are mixed/stored in CURRENT_COLORS
 COLORS = {
-    'sky_top': ((0.625, 0.47, 0.73), (0.53611, 0.13, 1.0), (0.69444, 0.71, 0.13), (0.9693, 0.4, 0.12)),
-    'sky_mid': ((0.0, 0.16, 0.87), (0.55555, 0.5, 0.98), (0.908, 0.46, 0.5), (0.5638, 0.16, 0.08)),
-    'sky_bottom': ((0.1027, 0.87, 1.0), (0.55555, 0.99, 0.97), (0.113888, 0.87, 0.98), (0.097, 0.52, 0.0)),
+    'sky_top': ((0.625, 0.47, 0.73), (0.57, 1.0, 0.97), (0.69444, 0.71, 0.13), (0.9693, 0.4, 0.12)),
+    'sky_mid': ((0.0, 0.16, 0.87), (0.55555, 0.8, 0.98), (0.908, 0.46, 0.5), (0.5638, 0.16, 0.08)),
+    'sky_bottom': ((0.1027, 0.87, 1.0), (0.53611, 0.3, 1.0), (0.113888, 0.87, 0.98), (0.097, 0.52, 0.0)),
     
     'sun': ((0.06111, 1.0, 1.0), (0.15, 1.0, 1.0), (0.030555, 1.0, 0.98), (0.0177, 1.0, 0.65)),
     
@@ -66,6 +66,9 @@ COLORS = {
     'water_sand_overlay': ((0.08333334, 0.75, 0.84), (0.675, 1.0, 0.17), (0.08333334, 0.75, 0.84), (0.675, 1.0, 0.0)),
     
     'fog': ((0.08888, 0.55, 0.90), (0.6388, 0.02, 0.82), (0.025, 0.56, 0.74), (0.04722, 0.9, 0.19)),
+
+    'boat_overlay': ((0.1055, 0.5, 0.75), (0.14722, 0.35, 1.0), (0.88055, 0.79, 0.38), (0.59722, 1.0, 0.5)),
+    'seasonal_overlay': ((0.1055, 0.79, 1.0), (0.14722, 0.35, 1.0), (0.88055, 0.79, 0.38), (0.59722, 1.0, 0.5)),
     
     }
 
@@ -504,9 +507,9 @@ if __name__ == "__main__":
     #get_tide_data()
     #print(TIDE_LEVEL)
     #get_tide_data()
-    get_weather_data()
+    #get_weather_data()
     
-    #update_data_internet()
+    update_data_internet()
     print(
 f"""
 

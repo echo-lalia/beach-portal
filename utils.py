@@ -38,7 +38,8 @@ def get_factor(minimum, current, maximum) -> float:
     
     return current / maximum
 
-def swap_bytes(color):
+@micropython.viper
+def swap_bytes(color:int) -> int:
     """
     this just flips the left and right byte in the 16 bit color.
     """
