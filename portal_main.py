@@ -1036,9 +1036,13 @@ def draw_seasonal(epoch):
 
 
 def handle_boats(boat_list):
-    random.seed()
-    if random.random() > 0.98:
+    random.seed() # use true random source
+    
+    if random.random() > 0.99:
         boat_list.append(Boat())
+        
+        # sort by y so boats draw in correct order
+        boat_list.sort(key=lambda b: b.y)
     
     for boat in boat_list:
         if _FAST_CLOCK:
@@ -1047,12 +1051,13 @@ def handle_boats(boat_list):
         
         boat.move()
         
-        if boat.alive:
-            boat.draw()
-        else:
+        boat.draw()
+        
+        if not boat.alive:
             boat_list.remove(boat)
+
     print(boat_list)
-    #print(WATER_END)
+
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ BOATS: ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
