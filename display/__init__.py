@@ -514,7 +514,7 @@ class Display:
         # however it's faster if it's all inline
         red = (r1 * r2) // 31
         green = (g1 * g2) // 63
-        blue = (b1 + b2) // 31
+        blue = (b1 * b2) // 31
         
         # apply percentages
         bg_percent = 100 - percentage
